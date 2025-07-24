@@ -1,2 +1,2 @@
-# brewtify
+# Brewtify
 Playlists Brewery for Spotify
