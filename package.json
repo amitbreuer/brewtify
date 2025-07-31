@@ -4,17 +4,24 @@
   "description": "Playlists Brewery for Spotify",
   "main": "index.js",
   "scripts": {
+    "start": "nodemon --watch src --exec ts-node src/main.ts",
+    "build": "tsc",
+    "start:prod": "node dist/main.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/swagger": "^9.5.1",
+    "@fastify/swagger-ui": "^5.2.3",
+    "dotenv": "^17.2.1",
     "fastify": "^5.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",
     "nodemon": "^3.1.10",
+    "prettier": "^3.6.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
