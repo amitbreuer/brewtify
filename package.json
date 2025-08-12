@@ -2,12 +2,10 @@
   "name": "brewtify",
   "version": "1.0.0",
   "description": "Playlists Brewery for Spotify",
-  "main": "index.js",
+  "packageManager": "npm@10.9.2",
   "scripts": {
-    "start": "nodemon --watch src --exec ts-node src/main.ts",
-    "build": "tsc",
-    "start:prod": "node dist/main.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "turbo run dev",
+    "build": "turbo run build"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +21,9 @@
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
-  }
+    "turbo": "^2.5.5",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.4"
+  },
+  "workspaces": ["projects/*"]
 }
