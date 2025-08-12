@@ -1,6 +1,9 @@
-const clientId = '0da953cbe23e47c58afb84ba53d67947';
+import { UserProfile } from './types';
+import { CLIENT_ID, REDIRECT_URI } from './constants';
+
+const clientId = CLIENT_ID;
 const params = new URLSearchParams(window.location.search);
-const code = params.get("code");
+const code = params.get('code');
 
 if (!code) {
   redirectToAuthCodeFlow(clientId);
@@ -8,60 +11,66 @@ if (!code) {
   const accessToken = await getAccessToken(clientId, code);
   const profile = await fetchProfile(accessToken);
   populateUI(profile);
+  // const health = await fetch('http://localhost:3000/health');
+  // const healthData = await health.json();
+  // console.log('Health check:', healthData);
 }
 
-export async function getAccessToken(clientId: string, code: string): Promise<string> {
-  const verifier = localStorage.getItem("verifier");
+export async function getAccessToken(
+  clientId: string,
+  code: string,
+): Promise<string> {
+  const verifier = localStorage.getItem('code_verifier');
 
   const params = new URLSearchParams();
-  params.append("client_id", clientId);
-  params.append("grant_type", "authorization_code");
-  params.append("code", code);
-  params.append("redirect_uri", "http://127.0.0.1:5173/callback");
-  params.append("code_verifier", verifier!);
+  params.append('client_id', clientId);
+  params.append('grant_type', 'authorization_code');
+  params.append('code', code);
+  params.append('redirect_uri', REDIRECT_URI);
+  params.append('code_verifier', verifier!);
 
-  const result = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params
+  const result = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
   });
 
   const { access_token } = await result.json();
   return access_token;
 }
 
-async function fetchProfile(token: string): Promise<any> {
-  const result = await fetch("https://api.spotify.com/v1/me", {
-    method: "GET", headers: { Authorization: `Bearer ${token}` }
+async function fetchProfile(token: string): Promise<UserProfile> {
+  const result = await fetch('https://api.spotify.com/v1/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
   });
 
   return await result.json();
 }
 
-function populateUI(profile: any) {
-  document.getElementById("displayName")!.innerText = profile.display_name;
+function populateUI(profile: UserProfile) {
+  document.getElementById('displayName')!.innerText = profile.display_name;
   if (profile.images[0]) {
     const profileImage = new Image(200, 200);
     profileImage.src = profile.images[0].url;
-    document.getElementById("avatar")!.appendChild(profileImage);
+    document.getElementById('avatar')!.appendChild(profileImage);
   }
-  document.getElementById("id")!.innerText = profile.id;
-  document.getElementById("email")!.innerText = profile.email;
-  document.getElementById("uri")!.innerText = profile.uri;
-  document.getElementById("uri")!.setAttribute("href", profile.external_urls.spotify);
-  document.getElementById("url")!.innerText = profile.href;
-  document.getElementById("url")!.setAttribute("href", profile.href);
-  document.getElementById("imgUrl")!.innerText = profile.images[0]?.url ?? '(no profile image)';
+  document.getElementById('id')!.innerText = profile.id;
+  document.getElementById('email')!.innerText = profile.email;
+  document.getElementById('uri')!.innerText = profile.uri;
+  document
+    .getElementById('uri')!
+    .setAttribute('href', profile.external_urls.spotify);
+  document.getElementById('url')!.innerText = profile.href;
+  document.getElementById('url')!.setAttribute('href', profile.href);
+  document.getElementById('imgUrl')!.innerText =
+    profile.images[0]?.url ?? '(no profile image)';
 }
 
 function generateCodeVerifier(length: number) {
-  let text = '';
-  let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-
-  for (let i = 0; i < length; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const values = crypto.getRandomValues(new Uint8Array(length));
+  return values.reduce((acc, x) => acc + possible[x % possible.length], "");
 }
 
 async function generateCodeChallenge(codeVerifier: string) {
@@ -77,16 +86,14 @@ export async function redirectToAuthCodeFlow(clientId: string) {
   const verifier = generateCodeVerifier(128);
   const challenge = await generateCodeChallenge(verifier);
 
-  localStorage.setItem("verifier", verifier);
+  localStorage.setItem('code_verifier', verifier);
 
   const params = new URLSearchParams();
-  params.append("client_id", clientId);
-  params.append("response_type", "code");
-  params.append("redirect_uri", "http://127.0.0.1:5173/callback");
-  params.append("scope", "user-read-private user-read-email");
-  params.append("code_challenge_method", "S256");
-  params.append("code_challenge", challenge);
-
+  params.append('client_id', clientId);
+  params.append('response_type', 'code');
+  params.append('redirect_uri', REDIRECT_URI);
+  params.append('scope', 'user-read-private user-read-email');
+  params.append('code_challenge_method', 'S256');
+  params.append('code_challenge', challenge);
   document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
-
