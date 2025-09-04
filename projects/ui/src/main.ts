@@ -2,7 +2,7 @@ import { CLIENT_ID } from './constants';
 import { getAccessToken, redirectToAuthCodeFlow } from './auth';
 import { fetchProfile } from './spotify';
 import { populateUI, showCreatePlaylistSection, hideCreatePlaylistSection, updateCreatePlaylistButton } from './ui';
-import { loadPlaylists, handleCreatePlaylist, loadMoreArtists, showCreatePlaylistSection as showPlaylistSection, hideCreatePlaylistSection as hidePlaylistSection, getSelectedArtists } from './playlists';
+import { loadPlaylists, handleCreatePlaylist, loadMoreArtists, showCreatePlaylistSection as showPlaylistSection, hideCreatePlaylistSection as hidePlaylistSection, getSelectedArtists, setupArtistSearch } from './playlists';
 
 const clientId = CLIENT_ID;
 const params = new URLSearchParams(window.location.search);
@@ -45,6 +45,7 @@ function setupEventListeners() {
 async function handleShowCreatePlaylistSection() {
   showCreatePlaylistSection();
   await showPlaylistSection(accessToken);
+  setupArtistSearch(); // Initialize search functionality
 }
 
 function handleHideCreatePlaylistSection() {

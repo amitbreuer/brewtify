@@ -157,6 +157,100 @@
     .close-btn:hover {
       background-color: #727272;
     }
+    
+    .no-artists-message {
+      text-align: center;
+      padding: 40px 20px;
+      background-color: #2a2a2a;
+      border-radius: 8px;
+      color: #b3b3b3;
+      grid-column: 1 / -1;
+    }
+    
+    .no-artists-message p {
+      margin: 10px 0;
+      font-size: 16px;
+    }
+    
+    .no-artists-message p:first-child {
+      font-size: 18px;
+      font-weight: bold;
+      color: #ffffff;
+    }
+    
+    .search-container {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      background-color: #3a3a3a;
+      color: #ffffff;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    
+    .search-input:focus {
+      outline: 2px solid #1db954;
+      background-color: #404040;
+    }
+    
+    .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background-color: #2a2a2a;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+    
+    .search-result-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid #3a3a3a;
+      transition: background-color 0.2s;
+    }
+    
+    .search-result-item:hover {
+      background-color: #3a3a3a;
+    }
+    
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+    
+    .search-result-image {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      margin-right: 12px;
+      object-fit: cover;
+    }
+    
+    .search-result-info {
+      flex: 1;
+    }
+    
+    .search-result-name {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    
+    .search-result-details {
+      font-size: 0.9em;
+      color: #b3b3b3;
+    }
   </style>
 </head>
 <body>
@@ -170,7 +264,6 @@
     <li>Email: <span id="email"></span></li>
     <li>Spotify URI: <a id="uri" href="#"></a></li>
     <li>Link: <a id="url" href="#"></a></li>
-    <li>Profile Image: <span id="imgUrl"></span></li>
   </ul>
 </section>
 
@@ -206,8 +299,12 @@
       <input type="text" id="playlist-description" placeholder="Enter playlist description">
     </div>
     
-    <h3>Select Artists from Your Top Artists</h3>
-    <div id="artists-loading" class="loading">Loading your top artists...</div>
+    <h3>Select Artists from Your Followed Artists</h3>
+    <div class="search-container">
+      <input type="text" id="artist-search" placeholder="Search artists..." class="search-input">
+      <div id="search-results" class="search-results"></div>
+    </div>
+    <div id="artists-loading" class="loading">Loading your followed artists...</div>
     <div id="artists-grid" class="artist-grid"></div>
     
     <div id="show-more-container" style="text-align: center; margin: 20px 0; display: none;">
