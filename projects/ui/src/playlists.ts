@@ -19,6 +19,7 @@ import {
 
 // State variables
 let selectedArtists: Set<string> = new Set();
+let selectedArtistNames: Map<string, string> = new Map(); // Map artist ID to name
 let artistsLoaded = false;
 let currentAfterCursor: string | null = null;
 let hasMoreArtists = true;
@@ -174,7 +175,7 @@ export async function loadMoreArtists(token: string) {
     }
   } finally {
     showMoreBtn.disabled = false;
-    showMoreBtn.textContent = "Show More Artists";
+    showMoreBtn.textContent = 'Show More Artists';
   }
 }
 
@@ -185,13 +186,15 @@ function toggleArtistSelection(
 ) {
   if (selectedArtists.has(artistId)) {
     selectedArtists.delete(artistId);
+    selectedArtistNames.delete(artistId);
     element.classList.remove("selected");
   } else {
     selectedArtists.add(artistId);
+    selectedArtistNames.set(artistId, artistName);
     element.classList.add("selected");
   }
 
-  updateSelectedArtistsDisplay(selectedArtists);
+  updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
   updateCreatePlaylistButton(selectedArtists);
 }
 
@@ -263,7 +266,8 @@ export async function handleCreatePlaylist(token: string) {
     // Reset form
     resetForm();
     selectedArtists.clear();
-    updateSelectedArtistsDisplay(selectedArtists);
+    selectedArtistNames.clear();
+    updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
 
     // Reload playlists to show the new one
     document.getElementById("playlists-grid")!.innerHTML = "";
@@ -274,7 +278,7 @@ export async function handleCreatePlaylist(token: string) {
     showStatusMessage("Error creating playlist. Please try again.");
   } finally {
     createBtn.disabled = false;
-    createBtn.textContent = "Create Playlist (50 songs)";
+    createBtn.textContent = "Create Playlist";
     updateCreatePlaylistButton(selectedArtists);
   }
 }
@@ -289,7 +293,8 @@ export async function showCreatePlaylistSection(token: string) {
   // Reset form
   resetForm();
   selectedArtists.clear();
-  updateSelectedArtistsDisplay(selectedArtists);
+  selectedArtistNames.clear();
+  updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
   updateCreatePlaylistButton(selectedArtists);
 }
 
@@ -309,11 +314,32 @@ export function hideCreatePlaylistSection() {
   // Reset form and selections
   resetForm();
   selectedArtists.clear();
-  updateSelectedArtistsDisplay(selectedArtists);
+  selectedArtistNames.clear();
+  updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
 }
 
 export function getSelectedArtists(): Set<string> {
   return selectedArtists;
+}
+
+export function getSelectedArtistNames(): Map<string, string> {
+  return selectedArtistNames;
+}
+
+export function removeArtistFromSelection(artistId: string) {
+  // Remove from selected sets
+  selectedArtists.delete(artistId);
+  selectedArtistNames.delete(artistId);
+  
+  // Remove selected styling from the artist element if it's visible
+  const artistElement = document.querySelector(`[data-artist-id="${artistId}"]`) as HTMLElement;
+  if (artistElement) {
+    artistElement.classList.remove("selected");
+  }
+  
+  // Update the display
+  updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
+  updateCreatePlaylistButton(selectedArtists);
 }
 
 // Search functionality
@@ -373,11 +399,11 @@ function selectArtistFromSearch(artist: Artist) {
   let artistElement = document.querySelector(`[data-artist-id="${artist.id}"]`) as HTMLElement;
   
   if (!artistElement) {
-    // Artist is not currently displayed, we need to scroll to it or add it
-    // For now, let's just select it and add it to the selected list
+    // Artist is not currently displayed, add it to selected list directly
     if (!selectedArtists.has(artist.id)) {
       selectedArtists.add(artist.id);
-      updateSelectedArtistsDisplay(selectedArtists);
+      selectedArtistNames.set(artist.id, artist.name);
+      updateSelectedArtistsDisplay(selectedArtists, selectedArtistNames);
       updateCreatePlaylistButton(selectedArtists);
     }
   } else {

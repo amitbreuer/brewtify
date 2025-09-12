@@ -251,6 +251,125 @@
       font-size: 0.9em;
       color: #b3b3b3;
     }
+    
+    .profile-content {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      margin-top: 15px;
+    }
+    
+    .profile-avatar {
+      flex-shrink: 0;
+    }
+    
+    .profile-avatar img {
+      border-radius: 8px;
+    }
+    
+    .profile-details {
+      flex: 1;
+    }
+    
+    .profile-details ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .profile-details li {
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    
+    .profile-details a {
+      color: #1db954;
+      text-decoration: none;
+    }
+    
+    .profile-details a:hover {
+      text-decoration: underline;
+    }
+    
+    .selected-artists-container {
+      display: flex;
+      margin: 15px 0;
+    }
+    
+    .selected-artist-card {
+      position: relative;
+      background-color: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      transition: background-color 0.3s;
+      border: 2px solid #1db954;
+    }
+    
+    .selected-artist-card:hover {
+      background-color: #3a3a3a;
+    }
+    
+    .remove-artist-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background-color: #ff4444;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.3s;
+      z-index: 10;
+    }
+    
+    .remove-artist-btn:hover {
+      background-color: #ff6666;
+    }
+    
+    .artist-label {
+      display: inline-flex;
+      align-items: center;
+      background-color: #1db954;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 16px;
+      margin: 4px 6px 4px 0;
+      font-size: 0.9em;
+      font-weight: 500;
+      width: fit-content;
+      max-width: none;
+    }
+    
+    .remove-artist-label-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-left: 6px;
+      padding: 0;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+    }
+    
+    .remove-artist-label-btn:hover {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -258,13 +377,16 @@
 
 <section id="profile" class="section">
   <h2>Logged in as <span id="displayName"></span></h2>
-  <span id="avatar"></span>
-  <ul>
-    <li>User ID: <span id="id"></span></li>
-    <li>Email: <span id="email"></span></li>
-    <li>Spotify URI: <a id="uri" href="#"></a></li>
-    <li>Link: <a id="url" href="#"></a></li>
-  </ul>
+  <div class="profile-content">
+    <div id="avatar" class="profile-avatar"></div>
+    <div class="profile-details">
+      <ul>
+        <li>User ID: <span id="id"></span></li>
+        <li>Email: <span id="email"></span></li>
+        <li>Spotify URI: <a id="uri" href="#"></a></li>
+      </ul>
+    </div>
+  </div>
 </section>
 
 <section id="playlists-section" class="section">
@@ -313,10 +435,10 @@
     
     <div class="selected-artists">
       <strong>Selected Artists:</strong>
-      <div id="selected-artists-display"></div>
+      <div id="selected-artists-display" class="selected-artists-container"></div>
     </div>
     
-    <button id="create-playlist-btn" class="btn" disabled>Create Playlist (50 songs)</button>
+    <button id="create-playlist-btn" class="btn" disabled>Create Playlist</button>
   </div>
 </section>
 

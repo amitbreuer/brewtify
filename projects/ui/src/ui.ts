@@ -1,4 +1,5 @@
 import { UserProfile, Playlist, Artist } from './types';
+import { removeArtistFromSelection } from './playlists';
 
 export function populateUI(profile: UserProfile) {
   document.getElementById('displayName')!.innerText = profile.display_name;
@@ -13,8 +14,6 @@ export function populateUI(profile: UserProfile) {
   document
     .getElementById('uri')!
     .setAttribute('href', profile.external_urls.spotify);
-  document.getElementById('url')!.innerText = profile.href;
-  document.getElementById('url')!.setAttribute('href', profile.href);
 }
 
 export function createPlaylistElement(playlist: Playlist): HTMLElement {
@@ -58,21 +57,59 @@ export function createArtistElement(artist: Artist, onToggleSelection: (artistId
   return artistDiv;
 }
 
-export function updateSelectedArtistsDisplay(selectedArtists: Set<string>) {
+export function updateSelectedArtistsDisplay(selectedArtists: Set<string>, selectedArtistNames?: Map<string, string>) {
   const displayElement = document.getElementById('selected-artists-display')!;
   
   if (selectedArtists.size === 0) {
     displayElement.innerHTML = '<em>No artists selected</em>';
-    return;
+  } else {
+    // Get artist names from the provided map or fallback to DOM elements
+    const artistNames: string[] = [];
+    Array.from(selectedArtists).forEach(artistId => {
+      if (selectedArtistNames && selectedArtistNames.has(artistId)) {
+        // Use the stored name
+        artistNames.push(selectedArtistNames.get(artistId)!);
+      } else {
+        // Fallback to DOM lookup
+        const artistElement = document.querySelector(`[data-artist-id="${artistId}"]`) as HTMLElement;
+        if (artistElement) {
+          const nameElement = artistElement.querySelector('.item-name');
+          if (nameElement) {
+            artistNames.push(nameElement.textContent || '');
+          }
+        }
+      }
+    });
+    
+    // Display as labels
+    if (artistNames.length > 0) {
+      const labelsHtml = Array.from(selectedArtists).map(artistId => {
+        const artistName = selectedArtistNames && selectedArtistNames.has(artistId) 
+          ? selectedArtistNames.get(artistId)! 
+          : artistNames.find((_, index) => Array.from(selectedArtists)[index] === artistId) || 'Unknown Artist';
+        
+        return `<span class="artist-label">
+          ${artistName}
+          <button class="remove-artist-label-btn" data-artist-id="${artistId}" title="Remove artist">×</button>
+        </span>`;
+      }).join(' ');
+      displayElement.innerHTML = labelsHtml;
+      
+      // Add event listeners to remove buttons
+      displayElement.querySelectorAll('.remove-artist-label-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const artistId = (e.target as HTMLElement).dataset.artistId!;
+          removeArtistFromSelection(artistId);
+        });
+      });
+    } else {
+      displayElement.innerHTML = `<strong>${selectedArtists.size} artist(s) selected</strong>`;
+    }
   }
   
-  const artistElements = Array.from(selectedArtists).map(artistId => {
-    const artistElement = document.querySelector(`[data-artist-id="${artistId}"]`) as HTMLElement;
-    const artistName = artistElement?.querySelector('.item-name')?.textContent || 'Unknown Artist';
-    return `<span class="selected-artist-tag">${artistName}</span>`;
-  });
-  
-  displayElement.innerHTML = artistElements.join('');
+  // Update the create playlist button state
+  updateCreatePlaylistButton(selectedArtists);
 }
 
 export function updateCreatePlaylistButton(selectedArtists: Set<string>) {
