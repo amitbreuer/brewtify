@@ -20,7 +20,7 @@ export function createPlaylistElement(playlist: Playlist): HTMLElement {
   const playlistDiv = document.createElement('div');
   playlistDiv.className = 'playlist-item';
   
-  const imageUrl = playlist.images[0]?.url || 'https://via.placeholder.com/150x150?text=No+Image';
+  const imageUrl = playlist.images?.[0]?.url || 'https://via.placeholder.com/150x150?text=No+Image';
   
   playlistDiv.innerHTML = `
     <img src="${imageUrl}" alt="${playlist.name}" class="item-image">

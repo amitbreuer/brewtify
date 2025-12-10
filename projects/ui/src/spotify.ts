@@ -67,7 +67,7 @@ export async function fetchArtistTopTracks(
 async function fetchArtistAlbums(
   token: string,
   artistId: string,
-  limit: number = 50,
+  limit: number = 20,
   offset: number = 0,
 ): Promise<AlbumsResponse> {
   const result = await fetch(
@@ -84,7 +84,7 @@ async function fetchArtistAlbums(
 async function fetchAlbumTracks(
   token: string,
   albumId: string,
-  limit: number = 50,
+  limit: number = 30,
   offset: number = 0,
 ): Promise<AlbumTracksResponse> {
   const result = await fetch(
@@ -104,34 +104,13 @@ export async function fetchAllArtistTracks(
 ): Promise<Track[]> {
   const seenTrackIds = new Set<string>();
 
-  // Step 1: Fetch all albums for the artist with pagination
-  const allAlbums = [];
-  let albumOffset = 0;
-  let hasMoreAlbums = true;
+  // Step 1: Fetch 20 albums for the artist
+  const albumsResponse = await fetchArtistAlbums(token, artistId, 20, 0);
 
-  while (hasMoreAlbums) {
-    const albumsResponse = await fetchArtistAlbums(token, artistId, 50, albumOffset);
-    allAlbums.push(...albumsResponse.items);
-
-    albumOffset += albumsResponse.limit;
-    hasMoreAlbums = albumsResponse.next !== null;
-  }
-
-  // Step 2: Fetch tracks for all albums in parallel
-  const albumTracksPromises = allAlbums.map(async (album) => {
-    const tracks: Track[] = [];
-    let trackOffset = 0;
-    let hasMoreTracks = true;
-
-    while (hasMoreTracks) {
-      const tracksResponse = await fetchAlbumTracks(token, album.id, 50, trackOffset);
-      tracks.push(...tracksResponse.items);
-
-      trackOffset += tracksResponse.limit;
-      hasMoreTracks = tracksResponse.next !== null;
-    }
-
-    return tracks;
+  // Step 2: Fetch tracks for all albums in parallel (30 tracks per album)
+  const albumTracksPromises = albumsResponse.items.map(async (album) => {
+    const tracksResponse = await fetchAlbumTracks(token, album.id, 30, 0);
+    return tracksResponse.items;
   });
 
   const results = await Promise.allSettled(albumTracksPromises);
