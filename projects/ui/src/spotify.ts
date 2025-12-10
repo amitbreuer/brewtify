@@ -5,6 +5,9 @@ import {
   TracksResponse,
   Playlist,
   Artist,
+  AlbumsResponse,
+  AlbumTracksResponse,
+  Track,
 } from "./types";
 
 export async function fetchProfile(token: string): Promise<UserProfile> {
@@ -59,6 +62,94 @@ export async function fetchArtistTopTracks(
   );
 
   return await result.json();
+}
+
+async function fetchArtistAlbums(
+  token: string,
+  artistId: string,
+  limit: number = 50,
+  offset: number = 0,
+): Promise<AlbumsResponse> {
+  const result = await fetch(
+    `https://api.spotify.com/v1/artists/${artistId}/albums?limit=${limit}&offset=${offset}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+
+  return await result.json();
+}
+
+async function fetchAlbumTracks(
+  token: string,
+  albumId: string,
+  limit: number = 50,
+  offset: number = 0,
+): Promise<AlbumTracksResponse> {
+  const result = await fetch(
+    `https://api.spotify.com/v1/albums/${albumId}/tracks?limit=${limit}&offset=${offset}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+
+  return await result.json();
+}
+
+export async function fetchAllArtistTracks(
+  token: string,
+  artistId: string,
+): Promise<Track[]> {
+  const seenTrackIds = new Set<string>();
+
+  // Step 1: Fetch all albums for the artist with pagination
+  const allAlbums = [];
+  let albumOffset = 0;
+  let hasMoreAlbums = true;
+
+  while (hasMoreAlbums) {
+    const albumsResponse = await fetchArtistAlbums(token, artistId, 50, albumOffset);
+    allAlbums.push(...albumsResponse.items);
+
+    albumOffset += albumsResponse.limit;
+    hasMoreAlbums = albumsResponse.next !== null;
+  }
+
+  // Step 2: Fetch tracks for all albums in parallel
+  const albumTracksPromises = allAlbums.map(async (album) => {
+    const tracks: Track[] = [];
+    let trackOffset = 0;
+    let hasMoreTracks = true;
+
+    while (hasMoreTracks) {
+      const tracksResponse = await fetchAlbumTracks(token, album.id, 50, trackOffset);
+      tracks.push(...tracksResponse.items);
+
+      trackOffset += tracksResponse.limit;
+      hasMoreTracks = tracksResponse.next !== null;
+    }
+
+    return tracks;
+  });
+
+  const results = await Promise.allSettled(albumTracksPromises);
+
+  // Step 3: Collect all tracks and deduplicate
+  const allTracks: Track[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      for (const track of result.value) {
+        if (!seenTrackIds.has(track.id)) {
+          seenTrackIds.add(track.id);
+          allTracks.push(track);
+        }
+      }
+    }
+  }
+
+  return allTracks;
 }
 
 export async function createPlaylist(

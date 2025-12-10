@@ -1,7 +1,7 @@
 import { Artist, Track } from "./types";
 import {
   fetchPlaylists,
-  fetchArtistTopTracks,
+  fetchAllArtistTracks,
   createPlaylist,
   addTracksToPlaylist,
   fetchProfile,
@@ -235,21 +235,31 @@ export async function handleCreatePlaylist(token: string) {
       `Playlist "${playlistName}" created! Gathering songs from selected artists...`,
     );
 
-    // Get tracks from selected artists
-    const allTracks: Track[] = [];
+    // Get tracks from selected artists in parallel
     const artistIds = Array.from(selectedArtists);
+    showStatusMessage(
+      `Gathering songs from ${artistIds.length} selected artists...`,
+    );
 
-    for (const artistId of artistIds) {
-      try {
-        const tracksData = await fetchArtistTopTracks(token, artistId);
-        allTracks.push(...tracksData.tracks);
-        showStatusMessage(
-          `Gathered songs from ${allTracks.length} tracks so far...`,
-        );
-      } catch (error) {
-        console.error(`Error fetching tracks for artist ${artistId}:`, error);
+    const artistTracksPromises = artistIds.map(artistId =>
+      fetchAllArtistTracks(token, artistId)
+    );
+
+    const results = await Promise.allSettled(artistTracksPromises);
+
+    // Collect all tracks from successful requests
+    const allTracks: Track[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        allTracks.push(...result.value);
+      } else {
+        console.error('Error fetching tracks for artist:', result.reason);
       }
     }
+
+    showStatusMessage(
+      `Gathered ${allTracks.length} tracks from ${artistIds.length} artists!`,
+    );
 
     // Shuffle and select the requested number of tracks
     const shuffledTracks = allTracks.sort(() => Math.random() - 0.5);

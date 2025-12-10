@@ -58,6 +58,18 @@ export type Track = Readonly<{
   uri: string;
 }>;
 
+export type Album = Readonly<{
+  id: string;
+  name: string;
+  album_type: string;
+  album_group?: string;
+  total_tracks: number;
+  release_date: string;
+  images: Image[];
+  artists: Artist[];
+  external_urls: { spotify: string };
+}>;
+
 export type PlaylistsResponse = Readonly<{
   items: Playlist[];
   total: number;
@@ -80,4 +92,20 @@ export type TopArtistsResponse = Readonly<{
 
 export type TracksResponse = Readonly<{
   tracks: Track[];
+}>;
+
+export type AlbumsResponse = Readonly<{
+  items: Album[];
+  total: number;
+  limit: number;
+  offset: number;
+  next: string | null;
+}>;
+
+export type AlbumTracksResponse = Readonly<{
+  items: Track[];
+  total: number;
+  limit: number;
+  offset: number;
+  next: string | null;
 }>;
