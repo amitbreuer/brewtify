@@ -1,5 +1,5 @@
 import { CLIENT_ID } from './constants';
-import { getAccessToken, redirectToAuthCodeFlow } from './auth';
+import { getAccessToken, redirectToAuthCodeFlow, getValidAccessToken } from './auth';
 import { fetchProfile } from './spotify';
 import { populateUI, showCreatePlaylistSection, hideCreatePlaylistSection, updateCreatePlaylistButton } from './ui';
 import { loadPlaylists, handleCreatePlaylist, loadMoreArtists, showCreatePlaylistSection as showPlaylistSection, hideCreatePlaylistSection as hidePlaylistSection, getSelectedArtists, setupArtistSearch } from './playlists';
@@ -8,21 +8,31 @@ const clientId = CLIENT_ID;
 const params = new URLSearchParams(window.location.search);
 const code = params.get('code');
 
-let accessToken: string;
+let accessToken: string | null = null;
 
-if (!code) {
-  redirectToAuthCodeFlow(clientId);
-} else {
+// First, try to get a valid stored access token
+accessToken = await getValidAccessToken();
+
+if (!accessToken && code) {
+  // No stored token, but we have an auth code - exchange it for tokens
   accessToken = await getAccessToken(clientId, code);
+  // Clean up the URL by removing the code parameter
+  window.history.replaceState({}, document.title, '/');
+} else if (!accessToken) {
+  // No stored token and no auth code - redirect to Spotify auth
+  redirectToAuthCodeFlow(clientId);
+}
+
+if (accessToken) {
   const profile = await fetchProfile(accessToken);
   populateUI(profile);
-  
+
   // Load playlists only
   await loadPlaylists(accessToken);
-  
+
   // Set up event listeners
   setupEventListeners();
-  
+
   const health = await fetch('http://localhost:3000/health');
   const healthData = await health.json();
   console.log('Health check:', healthData);
@@ -36,15 +46,15 @@ function setupEventListeners() {
   const showMoreArtistsBtn = document.getElementById('show-more-artists-btn') as HTMLButtonElement;
   
   playlistNameInput.addEventListener('input', () => updateCreatePlaylistButton(getSelectedArtists()));
-  createPlaylistBtn.addEventListener('click', () => handleCreatePlaylist(accessToken));
+  createPlaylistBtn.addEventListener('click', () => handleCreatePlaylist(accessToken as string));
   addPlaylistBtn.addEventListener('click', handleShowCreatePlaylistSection);
   closeCreatePlaylistBtn.addEventListener('click', handleHideCreatePlaylistSection);
-  showMoreArtistsBtn.addEventListener('click', () => loadMoreArtists(accessToken));
+  showMoreArtistsBtn.addEventListener('click', () => loadMoreArtists(accessToken as string));
 }
 
 async function handleShowCreatePlaylistSection() {
   showCreatePlaylistSection();
-  await showPlaylistSection(accessToken);
+  await showPlaylistSection(accessToken as string);
   setupArtistSearch(); // Initialize search functionality
 }
 

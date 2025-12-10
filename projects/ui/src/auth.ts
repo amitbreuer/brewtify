@@ -19,8 +19,84 @@ export async function getAccessToken(
     body: params,
   });
 
-  const { access_token } = await result.json();
+  const { access_token, refresh_token, expires_in } = await result.json();
+
+  // Store tokens and expiration time
+  storeTokens(access_token, refresh_token, expires_in);
+
   return access_token;
+}
+
+async function refreshAccessToken(): Promise<string> {
+  const refreshToken = localStorage.getItem('spotify_refresh_token');
+
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const params = new URLSearchParams();
+  params.append('client_id', CLIENT_ID);
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', refreshToken);
+
+  const result = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+
+  const { access_token, refresh_token: new_refresh_token, expires_in } = await result.json();
+
+  // Store new access token and expiration, update refresh token if provided
+  storeTokens(access_token, new_refresh_token || refreshToken, expires_in);
+
+  return access_token;
+}
+
+function storeTokens(accessToken: string, refreshToken: string, expiresIn: number) {
+  localStorage.setItem('spotify_access_token', accessToken);
+  localStorage.setItem('spotify_refresh_token', refreshToken);
+
+  // Calculate expiration time (current time + expires_in seconds - 60 second buffer)
+  const expirationTime = Date.now() + (expiresIn - 60) * 1000;
+  localStorage.setItem('spotify_token_expiration', expirationTime.toString());
+}
+
+function isTokenExpired(): boolean {
+  const expirationTime = localStorage.getItem('spotify_token_expiration');
+
+  if (!expirationTime) {
+    return true;
+  }
+
+  return Date.now() >= parseInt(expirationTime);
+}
+
+export async function getValidAccessToken(): Promise<string | null> {
+  const accessToken = localStorage.getItem('spotify_access_token');
+  const refreshToken = localStorage.getItem('spotify_refresh_token');
+
+  // No tokens stored
+  if (!accessToken || !refreshToken) {
+    return null;
+  }
+
+  // Token is still valid
+  if (!isTokenExpired()) {
+    return accessToken;
+  }
+
+  // Token expired, refresh it
+  try {
+    return await refreshAccessToken();
+  } catch (error) {
+    console.error('Failed to refresh token:', error);
+    // Clear invalid tokens
+    localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem('spotify_refresh_token');
+    localStorage.removeItem('spotify_token_expiration');
+    return null;
+  }
 }
 
 function generateCodeVerifier(length: number) {
