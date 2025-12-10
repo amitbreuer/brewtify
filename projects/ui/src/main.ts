@@ -2,7 +2,7 @@ import { CLIENT_ID } from './constants';
 import { getAccessToken, redirectToAuthCodeFlow, getValidAccessToken } from './auth';
 import { fetchProfile } from './spotify';
 import { populateUI, showCreatePlaylistSection, hideCreatePlaylistSection, updateCreatePlaylistButton } from './ui';
-import { loadPlaylists, handleCreatePlaylist, loadMoreArtists, showCreatePlaylistSection as showPlaylistSection, hideCreatePlaylistSection as hidePlaylistSection, getSelectedArtists, setupArtistSearch } from './playlists';
+import { loadPlaylists, handleCreatePlaylist, showCreatePlaylistSection as showPlaylistSection, hideCreatePlaylistSection as hidePlaylistSection, getSelectedArtists, setupArtistSearch } from './playlists';
 
 const clientId = CLIENT_ID;
 const params = new URLSearchParams(window.location.search);
@@ -32,10 +32,6 @@ if (accessToken) {
 
   // Set up event listeners
   setupEventListeners();
-
-  const health = await fetch('http://localhost:3000/health');
-  const healthData = await health.json();
-  console.log('Health check:', healthData);
 }
 
 function setupEventListeners() {
@@ -43,13 +39,11 @@ function setupEventListeners() {
   const createPlaylistBtn = document.getElementById('create-playlist-btn') as HTMLButtonElement;
   const addPlaylistBtn = document.getElementById('add-playlist-btn') as HTMLButtonElement;
   const closeCreatePlaylistBtn = document.getElementById('close-create-playlist-btn') as HTMLButtonElement;
-  const showMoreArtistsBtn = document.getElementById('show-more-artists-btn') as HTMLButtonElement;
-  
+
   playlistNameInput.addEventListener('input', () => updateCreatePlaylistButton(getSelectedArtists()));
   createPlaylistBtn.addEventListener('click', () => handleCreatePlaylist(accessToken as string));
   addPlaylistBtn.addEventListener('click', handleShowCreatePlaylistSection);
   closeCreatePlaylistBtn.addEventListener('click', handleHideCreatePlaylistSection);
-  showMoreArtistsBtn.addEventListener('click', () => loadMoreArtists(accessToken as string));
 }
 
 async function handleShowCreatePlaylistSection() {

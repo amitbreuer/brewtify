@@ -21,10 +21,7 @@ import {
 let selectedArtists: Set<string> = new Set();
 let selectedArtistNames: Map<string, string> = new Map(); // Map artist ID to name
 let artistsLoaded = false;
-let currentAfterCursor: string | null = null;
-let hasMoreArtists = true;
 let allFollowedArtists: Artist[] = []; // Cache all fetched artists
-let displayedArtistsCount = 0; // Track how many artists are currently displayed
 let searchTimeout: number | null = null; // Debounce search input
 
 export async function loadPlaylists(token: string) {
@@ -46,30 +43,32 @@ export async function loadPlaylists(token: string) {
   }
 }
 
-export async function loadFollowedArtists(
-  token: string,
-  append: boolean = false,
-) {
+export async function loadFollowedArtists(token: string) {
   try {
     const artistsGrid = document.getElementById("artists-grid")!;
     const loadingElement = document.getElementById("artists-loading")!;
     const showMoreContainer = document.getElementById("show-more-container")!;
 
-    // Fetch new artists from API
-    const artistsData = await fetchFollowedArtists(
-      token,
-      30,
-      currentAfterCursor || undefined,
-    );
+    loadingElement.style.display = "block";
+    loadingElement.innerText = "Loading all followed artists...";
 
-    // Add new artists to our cache
-    allFollowedArtists.push(...artistsData.items);
+    // Fetch ALL followed artists with pagination
+    allFollowedArtists = [];
+    let afterCursor: string | undefined = undefined;
+    let hasMore = true;
 
-    // Update pagination state
-    currentAfterCursor = artistsData.next;
-    hasMoreArtists = artistsData.next !== null;
+    while (hasMore) {
+      const artistsData = await fetchFollowedArtists(token, 50, afterCursor);
+      allFollowedArtists.push(...artistsData.items);
 
-    // Sort the entire cached list by popularity
+      afterCursor = artistsData.next || undefined;
+      hasMore = artistsData.next !== null;
+
+      // Update loading message with progress
+      loadingElement.innerText = `Loading followed artists... (${allFollowedArtists.length} found)`;
+    }
+
+    // Sort the entire list by popularity
     allFollowedArtists.sort((a, b) => b.followers.total - a.followers.total);
 
     loadingElement.style.display = "none";
@@ -87,95 +86,20 @@ export async function loadFollowedArtists(
       return;
     }
 
-    // Clear the grid if this is not an append operation
-    if (!append) {
-      artistsGrid.innerHTML = "";
-      displayedArtistsCount = 0;
-    }
+    // Clear the grid and display ALL artists
+    artistsGrid.innerHTML = "";
 
-    // Calculate how many more artists to display (30 more, or remaining)
-    const artistsToShow = append ? 30 : 30;
-    const endIndex = Math.min(
-      displayedArtistsCount + artistsToShow,
-      allFollowedArtists.length,
-    );
-
-    // Display artists from the sorted cache
-    for (let i = displayedArtistsCount; i < endIndex; i++) {
-      const artist = allFollowedArtists[i];
+    for (const artist of allFollowedArtists) {
       const artistElement = createArtistElement(artist, toggleArtistSelection);
       artistsGrid.appendChild(artistElement);
     }
 
-    // Update displayed count
-    displayedArtistsCount = endIndex;
-
-    // Show/hide "Show More" button based on whether there are more artists to display or fetch
-    const hasMoreToDisplay = displayedArtistsCount < allFollowedArtists.length;
-    if (hasMoreToDisplay || hasMoreArtists) {
-      showMoreContainer.style.display = "block";
-    } else {
-      showMoreContainer.style.display = "none";
-    }
+    // Hide "Show More" button since all artists are displayed
+    showMoreContainer.style.display = "none";
   } catch (error) {
     console.error("Error loading followed artists:", error);
     document.getElementById("artists-loading")!.innerText =
       "Error loading followed artists";
-  }
-}
-
-export async function loadMoreArtists(token: string) {
-  const showMoreBtn = document.getElementById(
-    "show-more-artists-btn",
-  ) as HTMLButtonElement;
-
-  showMoreBtn.disabled = true;
-  showMoreBtn.textContent = "Loading...";
-
-  try {
-    // Check if we have more cached artists to display
-    const hasMoreCachedToDisplay =
-      displayedArtistsCount < allFollowedArtists.length;
-
-    if (hasMoreCachedToDisplay) {
-      // Display more from cache without API call
-      const artistsGrid = document.getElementById("artists-grid")!;
-      const artistsToShow = 30;
-      const endIndex = Math.min(
-        displayedArtistsCount + artistsToShow,
-        allFollowedArtists.length,
-      );
-
-      // Display artists from the sorted cache
-      for (let i = displayedArtistsCount; i < endIndex; i++) {
-        const artist = allFollowedArtists[i];
-        const artistElement = createArtistElement(
-          artist,
-          toggleArtistSelection,
-        );
-        artistsGrid.appendChild(artistElement);
-      }
-
-      // Update displayed count
-      displayedArtistsCount = endIndex;
-
-      // Check if we still have more to show
-      const stillHasMoreToDisplay =
-        displayedArtistsCount < allFollowedArtists.length;
-      const showMoreContainer = document.getElementById("show-more-container")!;
-
-      if (stillHasMoreToDisplay || hasMoreArtists) {
-        showMoreContainer.style.display = "block";
-      } else {
-        showMoreContainer.style.display = "none";
-      }
-    } else if (hasMoreArtists) {
-      // Fetch more artists from API
-      await loadFollowedArtists(token, true);
-    }
-  } finally {
-    showMoreBtn.disabled = false;
-    showMoreBtn.textContent = 'Show More Artists';
   }
 }
 
@@ -312,14 +236,9 @@ export async function showCreatePlaylistSection(token: string) {
 }
 
 export function hideCreatePlaylistSection() {
-  // Reset pagination state
-  currentAfterCursor = null;
-  hasMoreArtists = true;
+  // Reset state
   artistsLoaded = false;
-
-  // Reset cache and display state
   allFollowedArtists = [];
-  displayedArtistsCount = 0;
 
   // Clear artists grid
   clearArtistsGrid();
