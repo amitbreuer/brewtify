@@ -205,6 +205,9 @@ export async function handleCreatePlaylist(token: string) {
   const playlistDescription = (
     document.getElementById("playlist-description") as HTMLInputElement
   ).value.trim();
+  const songCount = parseInt(
+    (document.getElementById("song-count") as HTMLSelectElement).value
+  );
   const createBtn = document.getElementById(
     "create-playlist-btn",
   ) as HTMLButtonElement;
@@ -248,9 +251,9 @@ export async function handleCreatePlaylist(token: string) {
       }
     }
 
-    // Shuffle and select 50 tracks
+    // Shuffle and select the requested number of tracks
     const shuffledTracks = allTracks.sort(() => Math.random() - 0.5);
-    const selectedTracks = shuffledTracks.slice(0, 50);
+    const selectedTracks = shuffledTracks.slice(0, songCount);
     const trackUris = selectedTracks.map((track) => track.uri);
 
     showStatusMessage(`Adding ${selectedTracks.length} songs to playlist...`);

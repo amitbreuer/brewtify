@@ -135,6 +135,7 @@ export function hideStatusMessage() {
 export function resetForm() {
   (document.getElementById('playlist-name') as HTMLInputElement).value = '';
   (document.getElementById('playlist-description') as HTMLInputElement).value = '';
+  (document.getElementById('song-count') as HTMLSelectElement).value = '50';
   document.querySelectorAll('.artist-item.selected').forEach(el => el.classList.remove('selected'));
 }
 

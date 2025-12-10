@@ -1,31 +1,34 @@
 import { fastify } from 'fastify';
-import swagger from '@fastify/swagger';
-import swaggerUI from '@fastify/swagger-ui';
+import { fastifySwagger } from '@fastify/swagger';
+import { fastifySwaggerUi } from '@fastify/swagger-ui';
+import { fastifyCors } from '@fastify/cors';
 import healthRoutes from './routes/health';
-import { env } from './utils/env';
 
-const server = fastify({ logger: true });
+export async function createServer() {
+  const server = fastify({ logger: true });
 
-server.register(swagger, {
-  swagger: {
-    info: {
-      title: 'Fastify API',
-      description: 'API documentation',
-      version: '1.0.0'
-    },
-    host: `localhost:${env('PORT', 3000)}`,
-    schemes: ['http'],
-    consumes: ['application/json'],
-    produces: ['application/json']
-  }
-});
+  await server.register(fastifyCors, {
+    origin: ['http://127.0.0.1:5173'],
+    credentials: true,
+  });
 
-server.register(swaggerUI, {
-  routePrefix: '/docs',
-  staticCSP: true,
-  transformStaticCSP: (header) => header
-});
+  await server.register(fastifySwagger, {
+    openapi: {
+      openapi: '3.0.0',
+      info: {
+        title: 'Fastify API',
+        description: 'API documentation',
+        version: '1.0.0'
+      }
+    }
+  });
 
-server.register(healthRoutes);
+  await server.register(fastifySwaggerUi, {
+    routePrefix: '/docs',
+    staticCSP: true,
+  });
 
-export default server;
+  await server.register(healthRoutes);
+
+  return server;
+}

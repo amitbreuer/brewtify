@@ -80,7 +80,7 @@
       font-weight: bold;
     }
     
-    .form-group input {
+    .form-group input, .form-group select {
       width: 100%;
       padding: 10px;
       border: none;
@@ -88,6 +88,15 @@
       background-color: #3a3a3a;
       color: #ffffff;
       font-size: 16px;
+    }
+    
+    .form-group select {
+      cursor: pointer;
+    }
+    
+    .form-group select option {
+      background-color: #3a3a3a;
+      color: #ffffff;
     }
     
     .btn {
@@ -419,6 +428,17 @@
     <div class="form-group">
       <label for="playlist-description">Description (optional):</label>
       <input type="text" id="playlist-description" placeholder="Enter playlist description">
+    </div>
+    <div class="form-group">
+      <label for="song-count">Number of Songs:</label>
+      <select id="song-count">
+        <option value="10">10 songs</option>
+        <option value="20">20 songs</option>
+        <option value="30">30 songs</option>
+        <option value="50" selected>50 songs</option>
+        <option value="75">75 songs</option>
+        <option value="100">100 songs</option>
+      </select>
     </div>
     
     <h3>Select Artists from Your Followed Artists</h3>
