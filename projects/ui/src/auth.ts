@@ -1,103 +1,5 @@
 import { CLIENT_ID, REDIRECT_URI } from './constants';
-
-export async function getAccessToken(
-  clientId: string,
-  code: string,
-): Promise<string> {
-  const verifier = localStorage.getItem('code_verifier');
-
-  const params = new URLSearchParams();
-  params.append('client_id', clientId);
-  params.append('grant_type', 'authorization_code');
-  params.append('code', code);
-  params.append('redirect_uri', REDIRECT_URI);
-  params.append('code_verifier', verifier!);
-
-  const result = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params,
-  });
-
-  const { access_token, refresh_token, expires_in } = await result.json();
-
-  // Store tokens and expiration time
-  storeTokens(access_token, refresh_token, expires_in);
-
-  return access_token;
-}
-
-async function refreshAccessToken(): Promise<string> {
-  const refreshToken = localStorage.getItem('spotify_refresh_token');
-
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  const params = new URLSearchParams();
-  params.append('client_id', CLIENT_ID);
-  params.append('grant_type', 'refresh_token');
-  params.append('refresh_token', refreshToken);
-
-  const result = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params,
-  });
-
-  const { access_token, refresh_token: new_refresh_token, expires_in } = await result.json();
-
-  // Store new access token and expiration, update refresh token if provided
-  storeTokens(access_token, new_refresh_token || refreshToken, expires_in);
-
-  return access_token;
-}
-
-function storeTokens(accessToken: string, refreshToken: string, expiresIn: number) {
-  localStorage.setItem('spotify_access_token', accessToken);
-  localStorage.setItem('spotify_refresh_token', refreshToken);
-
-  // Calculate expiration time (current time + expires_in seconds - 60 second buffer)
-  const expirationTime = Date.now() + (expiresIn - 60) * 1000;
-  localStorage.setItem('spotify_token_expiration', expirationTime.toString());
-}
-
-function isTokenExpired(): boolean {
-  const expirationTime = localStorage.getItem('spotify_token_expiration');
-
-  if (!expirationTime) {
-    return true;
-  }
-
-  return Date.now() >= parseInt(expirationTime);
-}
-
-export async function getValidAccessToken(): Promise<string | null> {
-  const accessToken = localStorage.getItem('spotify_access_token');
-  const refreshToken = localStorage.getItem('spotify_refresh_token');
-
-  // No tokens stored
-  if (!accessToken || !refreshToken) {
-    return null;
-  }
-
-  // Token is still valid
-  if (!isTokenExpired()) {
-    return accessToken;
-  }
-
-  // Token expired, refresh it
-  try {
-    return await refreshAccessToken();
-  } catch (error) {
-    console.error('Failed to refresh token:', error);
-    // Clear invalid tokens
-    localStorage.removeItem('spotify_access_token');
-    localStorage.removeItem('spotify_refresh_token');
-    localStorage.removeItem('spotify_token_expiration');
-    return null;
-  }
-}
+import { storeSession, checkAuthStatus } from './api';
 
 function generateCodeVerifier(length: number) {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -118,6 +20,7 @@ export async function redirectToAuthCodeFlow(clientId: string) {
   const verifier = generateCodeVerifier(128);
   const challenge = await generateCodeChallenge(verifier);
 
+  // Store verifier in localStorage for callback
   localStorage.setItem('code_verifier', verifier);
 
   const params = new URLSearchParams();
@@ -127,5 +30,50 @@ export async function redirectToAuthCodeFlow(clientId: string) {
   params.append('scope', 'user-read-private user-read-email playlist-read-private playlist-modify-private playlist-modify-public user-follow-read');
   params.append('code_challenge_method', 'S256');
   params.append('code_challenge', challenge);
+
+  // Redirect to Spotify authorization
   document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
+}
+
+export async function exchangeCodeForTokens(clientId: string, code: string): Promise<void> {
+  const verifier = localStorage.getItem('code_verifier');
+
+  if (!verifier) {
+    throw new Error('No code verifier found');
+  }
+
+  const params = new URLSearchParams();
+  params.append('client_id', clientId);
+  params.append('grant_type', 'authorization_code');
+  params.append('code', code);
+  params.append('redirect_uri', REDIRECT_URI);
+  params.append('code_verifier', verifier);
+
+  const result = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+
+  if (!result.ok) {
+    throw new Error('Failed to exchange code for tokens');
+  }
+
+  const { access_token, refresh_token, expires_in } = await result.json();
+
+  // Send tokens to backend to store in session
+  await storeSession(access_token, refresh_token, expires_in);
+
+  // Clear code verifier
+  localStorage.removeItem('code_verifier');
+}
+
+export async function isAuthenticated(): Promise<boolean> {
+  try {
+    const status = await checkAuthStatus();
+    return status.authenticated;
+  } catch (error) {
+    console.error('Failed to check auth status:', error);
+    return false;
+  }
 }

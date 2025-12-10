@@ -6,7 +6,7 @@ import {
   addTracksToPlaylist,
   fetchProfile,
   fetchFollowedArtists,
-} from "./spotify";
+} from "./api";
 import {
   createPlaylistElement,
   createArtistElement,
@@ -24,9 +24,9 @@ let artistsLoaded = false;
 let allFollowedArtists: Artist[] = []; // Cache all fetched artists
 let searchTimeout: number | null = null; // Debounce search input
 
-export async function loadPlaylists(token: string) {
+export async function loadPlaylists() {
   try {
-    const playlistsData = await fetchPlaylists(token);
+    const playlistsData = await fetchPlaylists();
     const playlistsGrid = document.getElementById("playlists-grid")!;
     const loadingElement = document.getElementById("playlists-loading")!;
 
@@ -43,7 +43,7 @@ export async function loadPlaylists(token: string) {
   }
 }
 
-export async function loadFollowedArtists(token: string) {
+export async function loadFollowedArtists() {
   try {
     const artistsGrid = document.getElementById("artists-grid")!;
     const loadingElement = document.getElementById("artists-loading")!;
@@ -58,7 +58,7 @@ export async function loadFollowedArtists(token: string) {
     let hasMore = true;
 
     while (hasMore) {
-      const artistsData = await fetchFollowedArtists(token, 50, afterCursor);
+      const artistsData = await fetchFollowedArtists(50, afterCursor);
       allFollowedArtists.push(...artistsData.items);
 
       afterCursor = artistsData.next || undefined;
@@ -122,7 +122,7 @@ function toggleArtistSelection(
   updateCreatePlaylistButton(selectedArtists);
 }
 
-export async function handleCreatePlaylist(token: string) {
+export async function handleCreatePlaylist() {
   const playlistName = (
     document.getElementById("playlist-name") as HTMLInputElement
   ).value.trim();
@@ -146,11 +146,10 @@ export async function handleCreatePlaylist(token: string) {
 
   try {
     // Get user profile for user ID
-    const profile = await fetchProfile(token);
+    const profile = await fetchProfile();
 
     // Create the playlist
     const playlist = await createPlaylist(
-      token,
       profile.id,
       playlistName,
       playlistDescription,
@@ -166,7 +165,7 @@ export async function handleCreatePlaylist(token: string) {
     );
 
     const artistTracksPromises = artistIds.map(artistId =>
-      fetchAllArtistTracks(token, artistId)
+      fetchAllArtistTracks(artistId)
     );
 
     const results = await Promise.allSettled(artistTracksPromises);
@@ -193,7 +192,7 @@ export async function handleCreatePlaylist(token: string) {
     showStatusMessage(`Adding ${selectedTracks.length} songs to playlist...`);
 
     // Add tracks to playlist
-    await addTracksToPlaylist(token, playlist.id, trackUris);
+    await addTracksToPlaylist(playlist.id, trackUris);
 
     showStatusMessage(`
       <strong>Success!</strong> Playlist "${playlistName}" created with ${selectedTracks.length} songs!<br>
@@ -209,7 +208,7 @@ export async function handleCreatePlaylist(token: string) {
     // Reload playlists to show the new one
     document.getElementById("playlists-grid")!.innerHTML = "";
     document.getElementById("playlists-loading")!.style.display = "block";
-    await loadPlaylists(token);
+    await loadPlaylists();
   } catch (error) {
     console.error("Error creating playlist:", error);
     showStatusMessage("Error creating playlist. Please try again.");
@@ -220,10 +219,10 @@ export async function handleCreatePlaylist(token: string) {
   }
 }
 
-export async function showCreatePlaylistSection(token: string) {
+export async function showCreatePlaylistSection() {
   // Load artists only when the section is opened for the first time
   if (!artistsLoaded) {
-    await loadFollowedArtists(token);
+    await loadFollowedArtists();
     artistsLoaded = true;
   }
 
