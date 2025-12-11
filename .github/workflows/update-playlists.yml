@@ -26,11 +26,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: |
-          npm install
-          cd projects/shared && npm install
-
       - name: Run playlist update script
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
@@ -38,5 +33,5 @@ jobs:
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           PLAYLIST_ID: ${{ github.event.inputs.playlist_id }}
         run: |
-          npx ts-node scripts/update-playlists.ts
+          node scripts/update-playlists.js
 
