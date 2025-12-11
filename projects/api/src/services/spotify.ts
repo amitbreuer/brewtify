@@ -248,6 +248,30 @@ export class SpotifyService {
       );
     }
   }
+
+  async replacePlaylistTracks(
+    accessToken: string,
+    playlistId: string,
+    trackUris: string[]
+  ): Promise<void> {
+    // First request replaces (max 100 tracks)
+    const firstChunk = trackUris.slice(0, 100);
+    await this.makeRequest<any>(
+      `/playlists/${playlistId}/tracks`,
+      accessToken,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ uris: firstChunk }),
+      }
+    );
+
+    // Subsequent requests append remaining tracks
+    if (trackUris.length > 100) {
+      const remainingUris = trackUris.slice(100);
+      await this.addTracksToPlaylist(accessToken, playlistId, remainingUris);
+    }
+  }
 }
+
 
 export const spotifyService = new SpotifyService();
