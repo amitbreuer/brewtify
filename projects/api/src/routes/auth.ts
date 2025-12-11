@@ -32,7 +32,14 @@ export default async function authRoutes(server: FastifyInstance) {
 
   // Get auth status
   server.get('/auth/status', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { accessToken, expiresAt } = request.session;
+    const { accessToken, expiresAt, refreshToken } = request.session;
+
+    server.log.info(`Auth status check:, ${JSON.stringify({
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      isExpired: expiresAt ? Date.now() >= (expiresAt - 60000) : null,
+    })}`);
 
     if (!accessToken || !expiresAt) {
       return { authenticated: false };
@@ -41,15 +48,25 @@ export default async function authRoutes(server: FastifyInstance) {
     // Check if token is expired (with 60 second buffer)
     const isExpired = Date.now() >= (expiresAt - 60000);
 
-    if (isExpired && request.session.refreshToken) {
+    if (isExpired && refreshToken) {
       try {
+        server.log.info('Attempting to refresh token...');
         // Refresh the token
-        const tokens = await spotifyService.refreshAccessToken(request.session.refreshToken);
+        const tokens = await spotifyService.refreshAccessToken(refreshToken);
         request.session.accessToken = tokens.access_token;
         request.session.expiresAt = Date.now() + (tokens.expires_in * 1000);
         if (tokens.refresh_token) {
           request.session.refreshToken = tokens.refresh_token;
         }
+
+        server.log.info(`Auth status check:, ${JSON.stringify({ 
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+            isExpired: expiresAt ? Date.now() >= (expiresAt - 60000) : null,
+        })}`);
+
+        server.log.info('Token refreshed successfully');
         return { authenticated: true };
       } catch (error: any) {
         server.log.error('Token refresh error:', error);

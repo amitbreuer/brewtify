@@ -14,8 +14,11 @@ if (code) {
     await exchangeCodeForTokens(clientId, code);
     // Clean up URL
     window.history.replaceState({}, document.title, '/');
-    // Reload to start authenticated session
-    window.location.reload();
+    // Load the app directly (no need to reload)
+    const profile = await fetchProfile();
+    populateUI(profile);
+    await loadPlaylists();
+    setupEventListeners();
   } catch (error) {
     console.error('Failed to exchange code:', error);
     redirectToAuthCodeFlow(clientId);
