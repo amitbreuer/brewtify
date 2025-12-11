@@ -16,23 +16,51 @@ export function populateUI(profile: UserProfile) {
     .setAttribute('href', profile.external_urls.spotify);
 }
 
-export function createPlaylistElement(playlist: Playlist): HTMLElement {
+export function createPlaylistElement(
+  playlist: Playlist,
+  onUpdate?: (playlistId: string) => Promise<void>
+): HTMLElement {
   const playlistDiv = document.createElement('div');
   playlistDiv.className = 'playlist-item';
-  
+
   const imageUrl = playlist.images?.[0]?.url || 'https://via.placeholder.com/150x150?text=No+Image';
-  
+
   playlistDiv.innerHTML = `
     <img src="${imageUrl}" alt="${playlist.name}" class="item-image">
     <div class="item-name">${playlist.name}</div>
     <div class="item-details">${playlist.tracks.total} tracks</div>
     <div class="item-details">by ${playlist.owner.display_name}</div>
   `;
-  
+
+  // Check if playlist has auto-update marker in description
+  const hasAutoUpdate = playlist.description?.includes('[Auto-update:');
+
+  if (hasAutoUpdate && onUpdate) {
+    const updateBtn = document.createElement('button');
+    updateBtn.className = 'playlist-update-btn';
+    updateBtn.innerHTML = '🔄';
+    updateBtn.title = 'Update playlist with new random tracks';
+    updateBtn.onclick = async (e) => {
+      e.stopPropagation();
+      updateBtn.disabled = true;
+      updateBtn.innerHTML = '⏳';
+      try {
+        await onUpdate(playlist.id);
+      } catch (error) {
+        console.error('Update failed:', error);
+        alert('Failed to update playlist');
+      } finally {
+        updateBtn.disabled = false;
+        updateBtn.innerHTML = '🔄';
+      }
+    };
+    playlistDiv.appendChild(updateBtn);
+  }
+
   playlistDiv.addEventListener('click', () => {
     window.open(playlist.external_urls.spotify, '_blank');
   });
-  
+
   return playlistDiv;
 }
 

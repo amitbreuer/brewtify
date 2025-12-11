@@ -95,6 +95,13 @@ export class SpotifyService {
     );
   }
 
+  async getPlaylist(accessToken: string, playlistId: string): Promise<Playlist> {
+    return this.makeRequest<Playlist>(
+      `/playlists/${playlistId}`,
+      accessToken
+    );
+  }
+
   async getFollowedArtists(
     accessToken: string,
     limit: number = 50,

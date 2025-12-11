@@ -1,0 +1,42 @@
+name: Update Auto-Update Playlists
+
+on:
+  schedule:
+    # Run every Sunday at 00:00 UTC (weekly)
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      playlist_id:
+        description: 'Playlist ID to update (optional - leave empty to update all)'
+        required: false
+        type: string
+
+jobs:
+  update-playlists:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          cd projects/shared && npm install
+
+      - name: Run playlist update script
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+          PLAYLIST_ID: ${{ github.event.inputs.playlist_id }}
+        run: |
+          npx ts-node scripts/update-playlists.ts
+

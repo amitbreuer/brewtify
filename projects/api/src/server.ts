@@ -7,6 +7,7 @@ import fastifySession from '@fastify/session';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
 import spotifyRoutes from './routes/spotify';
+import updatePlaylistRoutes from './routes/update-playlist';
 
 export async function createServer() {
   const server = fastify({ logger: true });
@@ -50,6 +51,7 @@ export async function createServer() {
   await server.register(healthRoutes);
   await server.register(authRoutes);
   await server.register(spotifyRoutes);
+  await server.register(updatePlaylistRoutes);
 
   return server;
 }

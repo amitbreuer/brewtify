@@ -103,18 +103,14 @@ export async function fillPlaylist(
 }
 
 /**
- * Encodes artist IDs into a playlist description
- */
-export function encodeArtistIds(artistIds: string[], customDescription?: string): string {
-  const encoded = `ARTISTS:${artistIds.join(',')}`;
-  return customDescription ? `${customDescription}\n\n${encoded}` : encoded;
-}
-
-/**
  * Decodes artist IDs from a playlist description
+ * Looks for pattern: [Auto-update: id1,id2,id3]
  */
-export function decodeArtistIds(description: string): string[] | null {
-  const match = description.match(/ARTISTS:([a-zA-Z0-9,]+)/);
-  if (!match) return null;
-  return match[1].split(',').filter(Boolean);
+export function parseArtistIdsFromDescription(description: string | null | undefined): string[] {
+  if (!description) return [];
+
+  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
+  if (!match) return [];
+
+  return match[1].split(',').map(id => id.trim()).filter(id => id.length > 0);
 }

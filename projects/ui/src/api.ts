@@ -87,3 +87,14 @@ export async function addTracksToPlaylist(
     body: JSON.stringify({ trackUris }),
   });
 }
+
+export async function updatePlaylist(
+  playlistId: string
+): Promise<{ success: boolean; trackCount: number; artistCount: number }> {
+  return fetchAPI<{ success: boolean; trackCount: number; artistCount: number }>(
+    `/api/playlists/${playlistId}/update`,
+    {
+      method: 'POST',
+    }
+  );
+}

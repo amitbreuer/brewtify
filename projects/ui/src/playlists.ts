@@ -6,6 +6,7 @@ import {
   addTracksToPlaylist,
   fetchProfile,
   fetchFollowedArtists,
+  updatePlaylist,
 } from "./api";
 import {
   createPlaylistElement,
@@ -32,8 +33,18 @@ export async function loadPlaylists() {
 
     loadingElement.style.display = "none";
 
+    const handleUpdate = async (playlistId: string) => {
+      const result = await updatePlaylist(playlistId);
+      alert(`Playlist updated with ${result.trackCount} tracks from ${result.artistCount} artists!`);
+
+      // Reload playlists
+      playlistsGrid.innerHTML = "";
+      loadingElement.style.display = "block";
+      await loadPlaylists();
+    };
+
     playlistsData.items.forEach((playlist) => {
-      const playlistElement = createPlaylistElement(playlist);
+      const playlistElement = createPlaylistElement(playlist, handleUpdate);
       playlistsGrid.appendChild(playlistElement);
     });
   } catch (error) {

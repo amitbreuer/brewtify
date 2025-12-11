@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { fillPlaylist, PlaylistConfig, SpotifyClient, Track } from '../projects/shared';
+import { fillPlaylist, SpotifyClient, Track, parseArtistIdsFromDescription } from '../projects/shared';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
@@ -150,26 +150,11 @@ class SpotifyClientImpl implements SpotifyClient {
 /**
  * Read playlist config file
  */
-function readConfig(): PlaylistConfig[] {
+function readConfig(): string[] {
   const configPath = path.join(__dirname, '../playlists-config.json');
   const content = fs.readFileSync(configPath, 'utf-8');
   const data = JSON.parse(content);
-  return data.playlists || [];
-}
-
-/**
- * Update config file with last updated timestamp
- */
-function updateLastUpdated(playlistId: string): void {
-  const configPath = path.join(__dirname, '../playlists-config.json');
-  const content = fs.readFileSync(configPath, 'utf-8');
-  const data = JSON.parse(content);
-
-  const playlist = data.playlists.find((p: PlaylistConfig) => p.playlistId === playlistId);
-  if (playlist) {
-    playlist.lastUpdatedAt = new Date().toISOString();
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
-  }
+  return data.playlistIds || [];
 }
 
 /**
@@ -183,24 +168,23 @@ async function main() {
   const accessToken = await getAccessToken();
 
   // Read config
-  const playlists = readConfig();
-  let enabledPlaylists = playlists.filter((p) => p.enabled);
+  let playlistIds = readConfig();
 
   // Filter by playlist ID if specified
   const targetPlaylistId = process.env.PLAYLIST_ID;
   if (targetPlaylistId) {
     console.log(`🎯 Filtering for specific playlist: ${targetPlaylistId}`);
-    enabledPlaylists = enabledPlaylists.filter((p) => p.playlistId === targetPlaylistId);
+    playlistIds = playlistIds.filter((id) => id === targetPlaylistId);
 
-    if (enabledPlaylists.length === 0) {
-      console.log(`❌ Playlist ${targetPlaylistId} not found or not enabled in config`);
+    if (playlistIds.length === 0) {
+      console.log(`❌ Playlist ${targetPlaylistId} not found in config`);
       return;
     }
   }
 
-  console.log(`📋 Found ${enabledPlaylists.length} playlist(s) to update`);
+  console.log(`📋 Found ${playlistIds.length} playlist(s) to update`);
 
-  if (enabledPlaylists.length === 0) {
+  if (playlistIds.length === 0) {
     console.log('✅ No playlists to update');
     return;
   }
@@ -208,24 +192,44 @@ async function main() {
   const client = new SpotifyClientImpl(accessToken);
 
   // Update each playlist
-  for (const playlist of enabledPlaylists) {
-    console.log(`\n🎶 Updating playlist: ${playlist.playlistName}`);
-    console.log(`   Artists: ${playlist.artistIds.length}`);
-    console.log(`   Track count: ${playlist.trackCount}`);
-
+  for (const playlistId of playlistIds) {
     try {
+      // Fetch playlist details
+      console.log(`\n🎶 Fetching playlist details: ${playlistId}`);
+      const playlistDetails = await makeRequest<any>(
+        `/playlists/${playlistId}`,
+        accessToken
+      );
+
+      const playlistName = playlistDetails.name;
+      const trackCount = playlistDetails.tracks.total;
+      const description = playlistDetails.description;
+
+      console.log(`   Name: ${playlistName}`);
+      console.log(`   Current tracks: ${trackCount}`);
+
+      // Parse artist IDs from description
+      const artistIds = parseArtistIdsFromDescription(description);
+
+      if (artistIds.length === 0) {
+        console.log(`   ⚠️  No artist IDs found in description - skipping`);
+        continue;
+      }
+
+      console.log(`   Artists: ${artistIds.length}`);
+
+      // Update playlist
       const result = await fillPlaylist(
         client,
         accessToken,
-        playlist.playlistId,
-        playlist.artistIds,
-        playlist.trackCount,
+        playlistId,
+        artistIds,
+        trackCount,
         true // Replace existing tracks
       );
 
       if (result.success) {
         console.log(`   ✅ Updated with ${result.trackCount} tracks`);
-        updateLastUpdated(playlist.playlistId);
       } else {
         console.error(`   ❌ Failed: ${result.error}`);
       }
