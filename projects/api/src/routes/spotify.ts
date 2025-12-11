@@ -90,11 +90,14 @@ export default async function spotifyRoutes(server: FastifyInstance) {
       const accessToken = await ensureAuthenticated(request, reply);
       const { playlistId } = request.params;
       const { trackUris } = request.body;
+      console.log(`[Add Tracks] Playlist: ${playlistId}, Track count: ${trackUris?.length || 0}`);
+      console.log(`[Add Tracks] Track URIs:`, trackUris);
       await spotifyService.addTracksToPlaylist(
         accessToken,
         playlistId,
         trackUris,
       );
+      console.log(`[Add Tracks] Successfully added tracks`);
       return { success: true };
     },
   );

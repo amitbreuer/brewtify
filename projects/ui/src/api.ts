@@ -91,10 +91,14 @@ export async function addTracksToPlaylist(
 export async function updatePlaylist(
   playlistId: string
 ): Promise<{ success: boolean; trackCount: number; artistCount: number }> {
-  return fetchAPI<{ success: boolean; trackCount: number; artistCount: number }>(
-    `/api/playlists/${playlistId}/update`,
-    {
-      method: 'POST',
-    }
-  );
+  const response = await fetch(`${API_BASE}/api/playlists/${playlistId}/update`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.statusText}`);
+  }
+
+  return await response.json();
 }

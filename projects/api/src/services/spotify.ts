@@ -238,13 +238,18 @@ export class SpotifyService {
     playlistId: string,
     trackUris: string[]
   ): Promise<void> {
+    console.log(`[SpotifyService] addTracksToPlaylist called with ${trackUris.length} tracks`);
+
     // Spotify API allows max 100 tracks per request
     const chunks = [];
     for (let i = 0; i < trackUris.length; i += 100) {
       chunks.push(trackUris.slice(i, i + 100));
     }
 
+    console.log(`[SpotifyService] Split into ${chunks.length} chunks`);
+
     for (const chunk of chunks) {
+      console.log(`[SpotifyService] Adding chunk of ${chunk.length} tracks to playlist ${playlistId}`);
       await this.makeRequest<any>(
         `/playlists/${playlistId}/tracks`,
         accessToken,
@@ -253,7 +258,10 @@ export class SpotifyService {
           body: JSON.stringify({ uris: chunk }),
         }
       );
+      console.log(`[SpotifyService] Chunk added successfully`);
     }
+
+    console.log(`[SpotifyService] All tracks added successfully`);
   }
 
   async replacePlaylistTracks(

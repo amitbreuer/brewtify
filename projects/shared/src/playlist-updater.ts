@@ -109,8 +109,17 @@ export async function fillPlaylist(
 export function parseArtistIdsFromDescription(description: string | null | undefined): string[] {
   if (!description) return [];
 
-  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
-  if (!match) return [];
+  // Try new format first: [Auto-update: id1,id2,id3]
+  let match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
+  if (match) {
+    return match[1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+  }
 
-  return match[1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+  // Fallback to old format: ARTISTS:id1,id2,id3
+  match = description.match(/ARTISTS:([a-zA-Z0-9,]+)/);
+  if (match) {
+    return match[1].split(',').filter(Boolean);
+  }
+
+  return [];
 }

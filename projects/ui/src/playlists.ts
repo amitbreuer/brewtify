@@ -140,9 +140,12 @@ export async function handleCreatePlaylist() {
   const playlistDescription = (
     document.getElementById("playlist-description") as HTMLInputElement
   ).value.trim();
-  const songCount = parseInt(
-    (document.getElementById("song-count") as HTMLSelectElement).value
-  );
+  const songCountElement = document.getElementById("song-count") as HTMLSelectElement;
+  const songCountValue = songCountElement?.value;
+  console.log('[Playlist Creation] Song count element:', songCountElement);
+  console.log('[Playlist Creation] Song count value:', songCountValue);
+  const songCount = parseInt(songCountValue || '60');
+  console.log('[Playlist Creation] Parsed song count:', songCount);
   const createBtn = document.getElementById(
     "create-playlist-btn",
   ) as HTMLButtonElement;
@@ -159,18 +162,25 @@ export async function handleCreatePlaylist() {
     // Get user profile for user ID
     const profile = await fetchProfile();
 
+    // Encode artist IDs in description for auto-update support
+    const artistIds = Array.from(selectedArtists);
+    const artistIdsEncoded = artistIds.join(',');
+
+    const finalDescription = playlistDescription
+      ? `${playlistDescription} [Auto-update: ${artistIdsEncoded}]`
+      : `[Auto-update: ${artistIdsEncoded}]`;
+
     // Create the playlist
     const playlist = await createPlaylist(
       profile.id,
       playlistName,
-      playlistDescription,
+      finalDescription,
     );
     showStatusMessage(
       `Playlist "${playlistName}" created! Gathering songs from selected artists...`,
     );
 
     // Get tracks from selected artists in parallel
-    const artistIds = Array.from(selectedArtists);
     showStatusMessage(
       `Gathering songs from ${artistIds.length} selected artists...`,
     );
@@ -181,29 +191,49 @@ export async function handleCreatePlaylist() {
 
     const results = await Promise.allSettled(artistTracksPromises);
 
+    console.log('[Playlist Creation] Promise results:', results);
+
     // Collect all tracks from successful requests
     const allTracks: Track[] = [];
+    let errorCount = 0;
     for (const result of results) {
       if (result.status === 'fulfilled') {
+        console.log('[Playlist Creation] Fulfilled result, tracks:', result.value);
         allTracks.push(...result.value);
       } else {
-        console.error('Error fetching tracks for artist:', result.reason);
+        errorCount++;
+        console.error('[Playlist Creation] Error fetching tracks for artist:', result.reason);
       }
     }
+
+    console.log('[Playlist Creation] Total tracks collected:', allTracks.length);
+    console.log('[Playlist Creation] All tracks:', allTracks);
 
     showStatusMessage(
       `Gathered ${allTracks.length} tracks from ${artistIds.length} artists!`,
     );
+
+    if (allTracks.length === 0) {
+      showStatusMessage(`<strong>Error:</strong> No tracks found! All ${errorCount} artist requests failed. Check console for details.`);
+      createBtn.disabled = false;
+      createBtn.textContent = "Create Playlist";
+      return;
+    }
 
     // Shuffle and select the requested number of tracks
     const shuffledTracks = allTracks.sort(() => Math.random() - 0.5);
     const selectedTracks = shuffledTracks.slice(0, songCount);
     const trackUris = selectedTracks.map((track) => track.uri);
 
+    console.log('[Playlist Creation] Selected tracks:', selectedTracks.length);
+    console.log('[Playlist Creation] Track URIs:', trackUris);
+
     showStatusMessage(`Adding ${selectedTracks.length} songs to playlist...`);
 
     // Add tracks to playlist
+    console.log('[Playlist Creation] Calling addTracksToPlaylist with', trackUris.length, 'URIs');
     await addTracksToPlaylist(playlist.id, trackUris);
+    console.log('[Playlist Creation] addTracksToPlaylist completed');
 
     showStatusMessage(`
       <strong>Success!</strong> Playlist "${playlistName}" created with ${selectedTracks.length} songs!<br>
