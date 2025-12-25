@@ -53,14 +53,21 @@ export class SpotifyService {
     params.append('grant_type', 'refresh_token');
     params.append('refresh_token', refreshToken);
 
+    // Create Basic Authorization header with client credentials
+    const authHeader = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+
     const response = await fetch(`${SPOTIFY_ACCOUNTS_BASE}/api/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Authorization': `Basic ${authHeader}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       body: params,
     });
 
     if (!response.ok) {
-      throw new Error('Failed to refresh access token');
+      const errorBody = await response.text();
+      throw new Error(`Failed to refresh access token: ${response.status} - ${errorBody}`);
     }
 
     return await response.json();

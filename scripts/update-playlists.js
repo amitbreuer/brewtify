@@ -20,6 +20,37 @@ if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN) {
 }
 
 /**
+ * Update GitHub secret using GitHub CLI (pre-installed in Actions)
+ */
+async function updateGitHubSecretWithCLI(newRefreshToken) {
+  const { execSync } = require('child_process');
+  const githubToken = process.env.GH_PAT;
+  const repo = process.env.GITHUB_REPOSITORY; // Format: "owner/repo"
+
+  if (!githubToken || !repo) {
+    console.log('   ℹ️  Not running in GitHub Actions with GH_PAT - secret not auto-updated');
+    return false;
+  }
+
+  try {
+    // Use GitHub CLI to update the secret
+    execSync(
+      `echo "${newRefreshToken}" | gh secret set SPOTIFY_REFRESH_TOKEN --repo ${repo}`,
+      {
+        env: { ...process.env, GH_TOKEN: githubToken },
+        stdio: 'pipe',
+      }
+    );
+
+    console.log('   ✅ GitHub secret SPOTIFY_REFRESH_TOKEN updated successfully!');
+    return true;
+  } catch (error) {
+    console.error('   ❌ Failed to update GitHub secret:', error.message);
+    return false;
+  }
+}
+
+/**
  * Get access token using refresh token
  */
 async function getAccessToken() {
@@ -46,6 +77,22 @@ async function getAccessToken() {
   }
 
   const data = await response.json();
+
+  // Check if Spotify returned a new refresh token
+  if (data.refresh_token && data.refresh_token !== REFRESH_TOKEN) {
+    console.log('⚠️  Spotify returned a new refresh token!');
+
+    // Try to update GitHub secret automatically using CLI
+    const updated = await updateGitHubSecretWithCLI(data.refresh_token);
+
+    if (!updated) {
+      console.log('   📝 Manual action required:');
+      console.log('   Update SPOTIFY_REFRESH_TOKEN in your environment/secrets to:');
+      console.log(`   ${data.refresh_token}`);
+      console.log('   The old refresh token has been revoked by Spotify.');
+    }
+  }
+
   return data.access_token;
 }
 
