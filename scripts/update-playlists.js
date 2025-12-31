@@ -32,6 +32,7 @@ function getFromCache(key, ttl) {
 
   try {
     if (!fs.existsSync(filePath)) {
+      console.log(`   ⚠️  Cache miss: ${key}`);
       return null;
     }
 
@@ -46,14 +47,16 @@ function getFromCache(key, ttl) {
       if (age > ttl) {
         // Cache expired, delete the file
         fs.unlinkSync(filePath);
+        console.log(`   ⏰ Cache expired: ${key} (age: ${Math.round(age / (24 * 60 * 60 * 1000))} days)`);
         return null;
       }
     }
 
+    console.log(`   ✅ Cache hit: ${key}`);
     return entry.data;
   } catch (error) {
     // If there's any error reading/parsing, treat as cache miss
-    console.error('Cache read error:', error);
+    console.error(`   ❌ Cache read error for ${key}:`, error);
     return null;
   }
 }
@@ -69,8 +72,9 @@ function setInCache(key, data, ttl) {
 
   try {
     fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+    console.log(`   💾 Cached: ${key}`);
   } catch (error) {
-    console.error('Cache write error:', error);
+    console.error(`   ❌ Cache write error for ${key}:`, error);
   }
 }
 
@@ -223,12 +227,15 @@ function selectRandomTracks(artistsTracks, trackCount) {
  * Get all tracks for an artist
  */
 async function getAllArtistTracks(accessToken, artistId) {
+  console.log(`   🔍 Fetching tracks for artist: ${artistId}`);
+
   // Check cache for artist albums (2 month TTL)
   const albumsCacheKey = `artist-albums:${artistId}:20:0`;
   let albumsResponse = getFromCache(albumsCacheKey, TWO_MONTHS_MS);
 
   if (!albumsResponse) {
     // Fetch 20 albums
+    console.log(`   📡 Fetching albums from Spotify API...`);
     albumsResponse = await makeRequest(
       `/artists/${artistId}/albums?limit=20`,
       accessToken
@@ -236,6 +243,8 @@ async function getAllArtistTracks(accessToken, artistId) {
     // Store in cache
     setInCache(albumsCacheKey, albumsResponse, TWO_MONTHS_MS);
   }
+
+  console.log(`   📀 Processing ${albumsResponse.items.length} albums...`);
 
   // Fetch tracks for each album in parallel
   const trackPromises = albumsResponse.items.map(async (album) => {
@@ -272,6 +281,7 @@ async function getAllArtistTracks(accessToken, artistId) {
     }
   }
 
+  console.log(`   ✨ Found ${allTracks.length} unique tracks`);
   return allTracks;
 }
 
