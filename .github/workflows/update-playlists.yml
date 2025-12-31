@@ -26,6 +26,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Restore Spotify API cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: spotify-cache-v1-${{ runner.os }}-${{ hashFiles('.cache/**') }}
+          restore-keys: |
+            spotify-cache-v1-${{ runner.os }}-
+
       - name: Run playlist update script
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}

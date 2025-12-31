@@ -5,9 +5,74 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
+
+// Cache configuration
+const CACHE_DIR = path.join(process.cwd(), '.cache');
+const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 2 months in milliseconds
+
+// Ensure cache directory exists
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+/**
+ * Cache helper functions
+ */
+function getCacheFilePath(key) {
+  const hash = crypto.createHash('md5').update(key).digest('hex');
+  return path.join(CACHE_DIR, `${hash}.json`);
+}
+
+function getFromCache(key, ttl) {
+  const filePath = getCacheFilePath(key);
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const entry = JSON.parse(content);
+
+    // Check if TTL is defined and if the cache has expired
+    if (ttl !== undefined) {
+      const now = Date.now();
+      const age = now - entry.timestamp;
+
+      if (age > ttl) {
+        // Cache expired, delete the file
+        fs.unlinkSync(filePath);
+        return null;
+      }
+    }
+
+    return entry.data;
+  } catch (error) {
+    // If there's any error reading/parsing, treat as cache miss
+    console.error('Cache read error:', error);
+    return null;
+  }
+}
+
+function setInCache(key, data, ttl) {
+  const filePath = getCacheFilePath(key);
+
+  const entry = {
+    data,
+    timestamp: Date.now(),
+    ttl,
+  };
+
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+  } catch (error) {
+    console.error('Cache write error:', error);
+  }
+}
 
 // Get credentials from environment
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
@@ -158,18 +223,35 @@ function selectRandomTracks(artistsTracks, trackCount) {
  * Get all tracks for an artist
  */
 async function getAllArtistTracks(accessToken, artistId) {
-  // Fetch 20 albums
-  const albumsResponse = await makeRequest(
-    `/artists/${artistId}/albums?limit=20`,
-    accessToken
-  );
+  // Check cache for artist albums (2 month TTL)
+  const albumsCacheKey = `artist-albums:${artistId}:20:0`;
+  let albumsResponse = getFromCache(albumsCacheKey, TWO_MONTHS_MS);
+
+  if (!albumsResponse) {
+    // Fetch 20 albums
+    albumsResponse = await makeRequest(
+      `/artists/${artistId}/albums?limit=20`,
+      accessToken
+    );
+    // Store in cache
+    setInCache(albumsCacheKey, albumsResponse, TWO_MONTHS_MS);
+  }
 
   // Fetch tracks for each album in parallel
   const trackPromises = albumsResponse.items.map(async (album) => {
-    const tracksResponse = await makeRequest(
-      `/albums/${album.id}/tracks?limit=30`,
-      accessToken
-    );
+    // Check cache for album tracks (permanent cache)
+    const tracksCacheKey = `album-tracks:${album.id}:30:0`;
+    let tracksResponse = getFromCache(tracksCacheKey);
+
+    if (!tracksResponse) {
+      tracksResponse = await makeRequest(
+        `/albums/${album.id}/tracks?limit=30`,
+        accessToken
+      );
+      // Store in cache (no TTL - permanent)
+      setInCache(tracksCacheKey, tracksResponse);
+    }
+
     return tracksResponse.items;
   });
 
