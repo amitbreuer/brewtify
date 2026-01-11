@@ -13,8 +13,11 @@ export async function createServer() {
   const server = fastify({ logger: true });
 
   await server.register(fastifyCors, {
-    origin: ['http://127.0.0.1:5173'],
+    origin: ['http://127.0.0.1:5173', 'http://localhost:5173'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Content-Type'],
   });
 
   // Register cookie support (required for sessions)

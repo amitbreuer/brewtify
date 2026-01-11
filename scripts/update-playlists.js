@@ -394,6 +394,31 @@ function readConfig() {
 }
 
 /**
+ * Fetch all user playlists
+ */
+async function getAllUserPlaylists(accessToken) {
+  let allPlaylists = [];
+  let offset = 0;
+  const limit = 50;
+
+  while (true) {
+    const response = await makeRequest(
+      `/me/playlists?limit=${limit}&offset=${offset}`,
+      accessToken
+    );
+    allPlaylists.push(...response.items);
+
+    if (!response.next) {
+      break;
+    }
+
+    offset += limit;
+  }
+
+  return allPlaylists;
+}
+
+/**
  * Main function
  */
 async function main() {
@@ -403,35 +428,17 @@ async function main() {
   console.log('📡 Getting access token...');
   const accessToken = await getAccessToken();
 
-  // Read config
-  let playlistIds = readConfig();
-
-  // Filter by playlist ID if specified
+  // Check if specific playlist ID is provided
   const targetPlaylistId = process.env.PLAYLIST_ID;
+
   if (targetPlaylistId) {
-    console.log(`🎯 Filtering for specific playlist: ${targetPlaylistId}`);
-    playlistIds = playlistIds.filter((id) => id === targetPlaylistId);
+    // Manual override: update specific playlist
+    console.log(`🎯 Updating specific playlist: ${targetPlaylistId}`);
 
-    if (playlistIds.length === 0) {
-      console.log(`❌ Playlist ${targetPlaylistId} not found in config`);
-      return;
-    }
-  }
-
-  console.log(`📋 Found ${playlistIds.length} playlist(s) to update`);
-
-  if (playlistIds.length === 0) {
-    console.log('✅ No playlists to update');
-    return;
-  }
-
-  // Update each playlist
-  for (const playlistId of playlistIds) {
     try {
       // Fetch playlist details
-      console.log(`\n🎶 Fetching playlist details: ${playlistId}`);
       const playlistDetails = await makeRequest(
-        `/playlists/${playlistId}`,
+        `/playlists/${targetPlaylistId}`,
         accessToken
       );
 
@@ -447,6 +454,61 @@ async function main() {
 
       if (artistIds.length === 0) {
         console.log(`   ⚠️  No artist IDs found in description - skipping`);
+        return;
+      }
+
+      console.log(`   Artists: ${artistIds.length}`);
+
+      // Update playlist
+      const result = await fillPlaylist(
+        accessToken,
+        targetPlaylistId,
+        artistIds,
+        trackCount,
+        true // Replace existing tracks
+      );
+
+      if (result.success) {
+        console.log(`   ✅ Updated with ${result.trackCount} tracks`);
+      } else {
+        console.error(`   ❌ Failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`   ❌ Error:`, error);
+    }
+
+    console.log('\n✨ Playlist update complete!');
+    return;
+  }
+
+  // Fetch all user playlists
+  console.log('📋 Fetching user playlists...');
+  const allPlaylists = await getAllUserPlaylists(accessToken);
+
+  // Filter playlists with [Auto-update: marker
+  const autoUpdatePlaylists = allPlaylists.filter(playlist =>
+    playlist.description && playlist.description.includes('[Auto-update:')
+  );
+
+  console.log(`📋 Found ${autoUpdatePlaylists.length} playlist(s) with auto-update enabled`);
+
+  if (autoUpdatePlaylists.length === 0) {
+    console.log('✅ No playlists to update');
+    return;
+  }
+
+  // Update each playlist
+  for (const playlist of autoUpdatePlaylists) {
+    try {
+      console.log(`\n🎶 Updating playlist: ${playlist.name}`);
+      console.log(`   ID: ${playlist.id}`);
+      console.log(`   Current tracks: ${playlist.tracks.total}`);
+
+      // Parse artist IDs from description
+      const artistIds = parseArtistIdsFromDescription(playlist.description);
+
+      if (artistIds.length === 0) {
+        console.log(`   ⚠️  No artist IDs found in description - skipping`);
         continue;
       }
 
@@ -455,9 +517,9 @@ async function main() {
       // Update playlist
       const result = await fillPlaylist(
         accessToken,
-        playlistId,
+        playlist.id,
         artistIds,
-        trackCount,
+        playlist.tracks.total,
         true // Replace existing tracks
       );
 

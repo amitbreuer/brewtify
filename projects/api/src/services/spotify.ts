@@ -293,6 +293,27 @@ export class SpotifyService {
       await this.addTracksToPlaylist(accessToken, playlistId, remainingUris);
     }
   }
+
+  async updatePlaylistDetails(
+    accessToken: string,
+    playlistId: string,
+    details: { name?: string; description?: string; public?: boolean }
+  ): Promise<void> {
+    const response = await fetch(`${SPOTIFY_API_BASE}/playlists/${playlistId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(details),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Spotify API error: ${response.statusText}`);
+    }
+
+    // Spotify's update playlist endpoint returns empty body, no need to parse JSON
+  }
 }
 
 

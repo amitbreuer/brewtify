@@ -102,3 +102,13 @@ export async function updatePlaylist(
 
   return await response.json();
 }
+
+export async function updatePlaylistDescription(
+  playlistId: string,
+  description: string
+): Promise<void> {
+  await fetchAPI(`/api/playlists/${playlistId}/description`, {
+    method: 'PATCH',
+    body: JSON.stringify({ description }),
+  });
+}

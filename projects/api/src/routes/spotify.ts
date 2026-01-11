@@ -101,4 +101,26 @@ export default async function spotifyRoutes(server: FastifyInstance) {
       return { success: true };
     },
   );
+
+  // Update playlist description
+  server.patch(
+    "/api/playlists/:playlistId/description",
+    async (
+      request: FastifyRequest<{
+        Params: { playlistId: string };
+        Body: { description: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const accessToken = await ensureAuthenticated(request, reply);
+      const { playlistId } = request.params;
+      const { description } = request.body;
+      await spotifyService.updatePlaylistDetails(
+        accessToken,
+        playlistId,
+        { description }
+      );
+      return { success: true };
+    },
+  );
 }

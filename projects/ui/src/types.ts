@@ -25,7 +25,6 @@ type Image = Readonly<{
 export type Playlist = Readonly<{
   id: string;
   name: string;
-  description: string;
   images: Image[];
   tracks: {
     total: number;
@@ -34,7 +33,9 @@ export type Playlist = Readonly<{
   owner: {
     display_name: string;
   };
-}>;
+}> & {
+  description: string;
+};
 
 export type Artist = Readonly<{
   id: string;

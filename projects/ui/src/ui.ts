@@ -1,5 +1,6 @@
 import { UserProfile, Playlist, Artist } from './types';
 import { removeArtistFromSelection } from './playlists';
+import { updatePlaylistDescription } from './api';
 
 export function populateUI(profile: UserProfile) {
   document.getElementById('displayName')!.innerText = profile.display_name;
@@ -32,9 +33,72 @@ export function createPlaylistElement(
     <div class="item-details">by ${playlist.owner.display_name}</div>
   `;
 
-  // Check if playlist has auto-update marker in description
-  const hasAutoUpdate = playlist.description?.includes('[Auto-update:');
+  // Parse description to detect artist IDs and auto-update status
+  const description = playlist.description || '';
 
+  // Pattern to match artist IDs: [Auto-update: id1,id2,...] or [id1,id2,...]
+  const artistIdsPattern = /\[(?:Auto-update:\s*)?([a-zA-Z0-9,\s]+)\]/;
+  const match = description.match(artistIdsPattern);
+  const hasArtistIds = match && match[1].trim().length > 0;
+  const hasAutoUpdate = description.includes('[Auto-update:');
+
+  // Add auto-update checkbox if artist IDs are present
+  if (hasArtistIds) {
+    const checkboxContainer = document.createElement('div');
+    checkboxContainer.className = 'auto-update-checkbox-container';
+    checkboxContainer.style.display = 'flex';
+    checkboxContainer.style.alignItems = 'center';
+    checkboxContainer.style.gap = '5px';
+    checkboxContainer.style.marginTop = '8px';
+    checkboxContainer.onclick = (e) => e.stopPropagation();
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = hasAutoUpdate;
+    checkbox.id = `auto-update-${playlist.id}`;
+
+    const label = document.createElement('label');
+    label.htmlFor = `auto-update-${playlist.id}`;
+    label.textContent = 'Auto-update';
+    label.style.cursor = 'pointer';
+    label.style.fontSize = '0.9em';
+
+    checkbox.addEventListener('change', async () => {
+      try {
+        let newDescription = description;
+
+        if (checkbox.checked) {
+          // Add "Auto-update: " prefix
+          if (!hasAutoUpdate) {
+            newDescription = description.replace(/\[([a-zA-Z0-9,\s]+)\]/, '[Auto-update: $1]');
+          }
+        } else {
+          // Remove "Auto-update: " prefix
+          newDescription = description.replace(/\[Auto-update:\s*([a-zA-Z0-9,\s]+)\]/, '[$1]');
+        }
+
+        // Update the playlist description via API
+        checkbox.disabled = true;
+        await updatePlaylistDescription(playlist.id, newDescription);
+
+        // Update local state
+        playlist.description = newDescription;
+      } catch (error) {
+        console.error('Failed to update playlist description:', error);
+        alert('Failed to update auto-update status');
+        // Revert checkbox state
+        checkbox.checked = !checkbox.checked;
+      } finally {
+        checkbox.disabled = false;
+      }
+    });
+
+    checkboxContainer.appendChild(checkbox);
+    checkboxContainer.appendChild(label);
+    playlistDiv.appendChild(checkboxContainer);
+  }
+
+  // Check if playlist has auto-update marker for the update button
   if (hasAutoUpdate && onUpdate) {
     const updateBtn = document.createElement('button');
     updateBtn.className = 'playlist-update-btn';
