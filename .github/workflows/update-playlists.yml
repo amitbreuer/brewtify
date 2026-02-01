@@ -2,8 +2,8 @@ name: Auto-Update Playlists
 
 on:
   schedule:
-    # Run weekly on Sunday at 00:00 UTC
-    - cron: '0 0 * * 0'
+    # Run every 6 days at 00:00 UTC to prevent cache expiration
+    - cron: '0 0 */6 * *'
   workflow_dispatch: # Allow manual trigger
     inputs:
       playlist_id:
@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache
-          key: spotify-cache-v1-${{ runner.os }}-${{ hashFiles('.cache/**') }}
+          key: spotify-cache-v1-${{ runner.os }}
           restore-keys: |
             spotify-cache-v1-${{ runner.os }}-
 
