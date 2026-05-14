@@ -10,8 +10,19 @@ const crypto = require('crypto');
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
 
-// Cache configuration
-const CACHE_DIR = path.join(process.cwd(), '.cache');
+// Cache configuration — resolve to the repo root so all consumers share one cache
+function findRepoRoot(startDir) {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'turbo.json'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
+const CACHE_DIR = path.join(findRepoRoot(__dirname), '.cache');
 const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 2 months in milliseconds
 
 // Ensure cache directory exists

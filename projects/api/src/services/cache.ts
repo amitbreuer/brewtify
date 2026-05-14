@@ -2,7 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const CACHE_DIR = path.join(process.cwd(), '.cache');
+// Resolve cache directory at the repo root so the API and scripts share the same cache
+function findRepoRoot(startDir: string): string {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'turbo.json'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
+const CACHE_DIR = path.join(findRepoRoot(__dirname), '.cache');
 
 // Ensure cache directory exists
 if (!fs.existsSync(CACHE_DIR)) {
