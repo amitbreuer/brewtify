@@ -22,22 +22,43 @@ export interface SpotifyClient {
 }
 
 /**
- * Selects random tracks from multiple artists
+ * Fisher-Yates shuffle — produces a uniformly random permutation
+ */
+function fisherYatesShuffle<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Selects random tracks from multiple artists with equal per-artist weighting.
+ * Each artist gets an equal quota of tracks, and a proper Fisher-Yates shuffle
+ * ensures good distribution across albums.
  */
 export function selectRandomTracks(
   artistsTracks: Map<string, Track[]>,
   trackCount: number
 ): Track[] {
-  const allTracks: Track[] = [];
+  const artistCount = artistsTracks.size;
+  if (artistCount === 0) return [];
 
-  // Flatten all tracks
+  const tracksPerArtist = Math.floor(trackCount / artistCount);
+  const remainder = trackCount % artistCount;
+
+  const selected: Track[] = [];
+  let artistIndex = 0;
+
   for (const tracks of artistsTracks.values()) {
-    allTracks.push(...tracks);
+    const quota = tracksPerArtist + (artistIndex < remainder ? 1 : 0);
+    const shuffled = fisherYatesShuffle(tracks);
+    selected.push(...shuffled.slice(0, quota));
+    artistIndex++;
   }
 
-  // Shuffle and select
-  const shuffled = allTracks.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, Math.min(trackCount, shuffled.length));
+  return fisherYatesShuffle(selected);
 }
 
 /**
