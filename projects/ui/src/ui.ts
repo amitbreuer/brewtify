@@ -19,7 +19,8 @@ export function populateUI(profile: UserProfile) {
 
 export function createPlaylistElement(
   playlist: Playlist,
-  onUpdate?: (playlistId: string) => Promise<void>
+  onUpdate?: (playlistId: string) => Promise<void>,
+  onDelete?: (playlistId: string, playlistName: string) => Promise<void>,
 ): HTMLElement {
   const playlistDiv = document.createElement('div');
   playlistDiv.className = 'playlist-item';
@@ -119,6 +120,27 @@ export function createPlaylistElement(
       }
     };
     playlistDiv.appendChild(updateBtn);
+  }
+
+  // Delete button — always shown
+  if (onDelete) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'playlist-delete-btn';
+    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.title = 'Remove playlist from library';
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      deleteBtn.disabled = true;
+      try {
+        await onDelete(playlist.id, playlist.name);
+      } catch (error) {
+        console.error('Delete failed:', error);
+        alert('Failed to delete playlist');
+      } finally {
+        deleteBtn.disabled = false;
+      }
+    };
+    playlistDiv.appendChild(deleteBtn);
   }
 
   playlistDiv.addEventListener('click', () => {

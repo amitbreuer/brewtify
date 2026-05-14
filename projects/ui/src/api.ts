@@ -11,7 +11,8 @@ const API_BASE = 'http://127.0.0.1:3000';
 async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
-    credentials: 'include', // Important for cookies/sessions
+    credentials: 'include',
+    signal: AbortSignal.timeout(10_000),
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
@@ -101,6 +102,18 @@ export async function updatePlaylist(
   }
 
   return await response.json();
+}
+
+export async function deletePlaylist(playlistId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/playlists/${playlistId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.statusText}`);
+  }
 }
 
 export async function updatePlaylistDescription(

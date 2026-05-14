@@ -294,6 +294,19 @@ export class SpotifyService {
     }
   }
 
+  async unfollowPlaylist(accessToken: string, playlistId: string): Promise<void> {
+    const response = await fetch(`${SPOTIFY_API_BASE}/playlists/${playlistId}/followers`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Spotify API error: ${response.statusText}`);
+    }
+  }
+
   async updatePlaylistDetails(
     accessToken: string,
     playlistId: string,

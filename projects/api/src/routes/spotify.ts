@@ -102,6 +102,20 @@ export default async function spotifyRoutes(server: FastifyInstance) {
     },
   );
 
+  // Delete (unfollow) playlist
+  server.delete(
+    "/api/playlists/:playlistId",
+    async (
+      request: FastifyRequest<{ Params: { playlistId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const accessToken = await ensureAuthenticated(request, reply);
+      const { playlistId } = request.params;
+      await spotifyService.unfollowPlaylist(accessToken, playlistId);
+      return { success: true };
+    },
+  );
+
   // Update playlist description
   server.patch(
     "/api/playlists/:playlistId/description",

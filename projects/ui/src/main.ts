@@ -8,12 +8,35 @@ const clientId = CLIENT_ID;
 const params = new URLSearchParams(window.location.search);
 const code = params.get('code');
 
+// Guard against redirect loops — if we've already redirected recently, stop
+const REDIRECT_GUARD_KEY = 'auth_redirect_ts';
+const REDIRECT_COOLDOWN_MS = 5000;
+
+function canRedirect(): boolean {
+  const lastRedirect = sessionStorage.getItem(REDIRECT_GUARD_KEY);
+  if (lastRedirect && Date.now() - Number(lastRedirect) < REDIRECT_COOLDOWN_MS) {
+    return false;
+  }
+  return true;
+}
+
+function safeRedirectToAuth() {
+  if (!canRedirect()) {
+    console.error('Auth redirect loop detected — stopping.');
+    document.body.innerHTML = '<h1>Authentication failed. Please clear your cookies and try again.</h1>';
+    return;
+  }
+  sessionStorage.setItem(REDIRECT_GUARD_KEY, String(Date.now()));
+  redirectToAuthCodeFlow(clientId);
+}
+
 // If we have a code, exchange it for tokens and store in backend session
 if (code) {
+  // Clean up URL immediately to prevent code reuse on refresh/HMR
+  window.history.replaceState({}, document.title, '/');
   try {
     await exchangeCodeForTokens(clientId, code);
-    // Clean up URL
-    window.history.replaceState({}, document.title, '/');
+    sessionStorage.removeItem(REDIRECT_GUARD_KEY);
     // Load the app directly (no need to reload)
     const profile = await fetchProfile();
     populateUI(profile);
@@ -21,17 +44,17 @@ if (code) {
     setupEventListeners();
   } catch (error) {
     console.error('Failed to exchange code:', error);
-    redirectToAuthCodeFlow(clientId);
+    safeRedirectToAuth();
   }
 } else {
   // Check if user is authenticated
   const authenticated = await isAuthenticated();
 
   if (!authenticated) {
-    // Not authenticated - redirect to Spotify auth
-    redirectToAuthCodeFlow(clientId);
+    safeRedirectToAuth();
   } else {
     // User is authenticated - load the app
+    sessionStorage.removeItem(REDIRECT_GUARD_KEY);
     try {
       const profile = await fetchProfile();
       populateUI(profile);
@@ -43,8 +66,7 @@ if (code) {
       setupEventListeners();
     } catch (error) {
       console.error('Failed to load app:', error);
-      // If loading fails, redirect to auth
-      redirectToAuthCodeFlow(clientId);
+      safeRedirectToAuth();
     }
   }
 }

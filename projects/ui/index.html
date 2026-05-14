@@ -412,6 +412,39 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+
+    .playlist-delete-btn {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background-color: rgba(255, 70, 70, 0.9);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      z-index: 1;
+    }
+
+    .playlist-item:hover .playlist-delete-btn {
+      display: flex;
+    }
+
+    .playlist-delete-btn:hover:not(:disabled) {
+      background-color: rgba(255, 40, 40, 1);
+      transform: scale(1.1);
+    }
+
+    .playlist-delete-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>

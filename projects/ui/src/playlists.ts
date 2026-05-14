@@ -7,6 +7,7 @@ import {
   fetchProfile,
   fetchFollowedArtists,
   updatePlaylist,
+  deletePlaylist,
 } from "./api";
 import {
   createPlaylistElement,
@@ -43,8 +44,18 @@ export async function loadPlaylists() {
       await loadPlaylists();
     };
 
+    const handleDelete = async (playlistId: string, playlistName: string) => {
+      if (!confirm(`Remove "${playlistName}" from your library?`)) return;
+      await deletePlaylist(playlistId);
+
+      // Reload playlists
+      playlistsGrid.innerHTML = "";
+      loadingElement.style.display = "block";
+      await loadPlaylists();
+    };
+
     playlistsData.items.forEach((playlist) => {
-      const playlistElement = createPlaylistElement(playlist, handleUpdate);
+      const playlistElement = createPlaylistElement(playlist, handleUpdate, handleDelete);
       playlistsGrid.appendChild(playlistElement);
     });
   } catch (error) {
