@@ -1,7 +1,7 @@
-import { FastifyInstance } from 'fastify';
+import { Router } from 'express';
 
-export default async function routes(server: FastifyInstance) {
-  server.get('/health', async (request, reply) => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
-  })
-}
+export const healthRoutes = Router();
+
+healthRoutes.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});

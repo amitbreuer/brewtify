@@ -18,9 +18,58 @@ export class SpotifyService {
     if (!this.initialized) {
       this.clientId = env('SPOTIFY_CLIENT_ID');
       this.clientSecret = env('SPOTIFY_CLIENT_SECRET');
-      this.redirectUri = 'http://localhost:3000/auth/callback';
+      this.redirectUri = env('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:5173/callback');
       this.initialized = true;
     }
+  }
+
+  getAuthUrl(state: string): string {
+    this.initialize();
+    const scopes = [
+      'user-read-private',
+      'user-read-email',
+      'playlist-read-private',
+      'playlist-modify-private',
+      'playlist-modify-public',
+      'user-follow-read',
+    ].join(' ');
+
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      response_type: 'code',
+      redirect_uri: this.redirectUri,
+      scope: scopes,
+      state,
+    });
+
+    return `${SPOTIFY_ACCOUNTS_BASE}/authorize?${params}`;
+  }
+
+  async exchangeCode(code: string): Promise<SpotifyTokens> {
+    this.initialize();
+    const params = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: this.redirectUri,
+    });
+
+    const authHeader = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+
+    const response = await fetch(`${SPOTIFY_ACCOUNTS_BASE}/api/token`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${authHeader}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params,
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Failed to exchange code: ${response.status} - ${body}`);
+    }
+
+    return await response.json();
   }
 
   // OAuth Methods
