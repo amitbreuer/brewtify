@@ -65,8 +65,11 @@ export function PlaylistList() {
         <p className="text-gray-400">No playlists found.</p>
       ) : (
         playlists.map((playlist) => (
-          <div
+          <a
             key={playlist.id}
+            href={playlist.external_urls.spotify}
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg"
           >
             {playlist.images[0] ? (
@@ -84,7 +87,7 @@ export function PlaylistList() {
               <div className="text-white font-medium truncate">{playlist.name}</div>
               <div className="text-xs text-gray-400">{playlist.tracks.total} tracks</div>
             </div>
-            <div className="flex gap-1">
+            <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
               {hasAutoUpdate(playlist) && (
                 <button
                   onClick={() => handleUpdate(playlist.id)}
@@ -103,7 +106,7 @@ export function PlaylistList() {
                 🗑️
               </button>
             </div>
-          </div>
+          </a>
         ))
       )}
     </div>
