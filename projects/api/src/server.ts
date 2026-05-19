@@ -2,15 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
+import { spotifyRoutes } from './routes/spotify';
 
 export function createServer() {
   const app = express();
 
   app.use(cors({
-    origin: ['http://127.0.0.1:5173', 'http://localhost:5173'],
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-User-Id'],
     exposedHeaders: ['Content-Type'],
   }));
 
@@ -18,6 +19,7 @@ export function createServer() {
 
   app.use(healthRoutes);
   app.use(authRoutes);
+  app.use(spotifyRoutes);
 
   return app;
 }
