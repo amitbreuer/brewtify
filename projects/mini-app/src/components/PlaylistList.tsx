@@ -51,7 +51,7 @@ export function PlaylistList() {
   };
 
   if (loading) {
-    return <div className="p-4 text-gray-400 text-center">Loading playlists...</div>;
+    return <div className="p-4 text-[#B3B3B3] text-center">Loading playlists...</div>;
   }
 
   if (error) {
@@ -62,7 +62,7 @@ export function PlaylistList() {
     <div className="flex flex-col gap-2 p-4">
       <h2 className="text-lg font-semibold text-white mb-2">Your Playlists</h2>
       {playlists.length === 0 ? (
-        <p className="text-gray-400">No playlists found.</p>
+        <p className="text-[#B3B3B3]">No playlists found.</p>
       ) : (
         playlists.map((playlist) => (
           <a
@@ -70,7 +70,7 @@ export function PlaylistList() {
             href={playlist.external_urls.spotify}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg"
+            className="flex items-center gap-3 p-3 bg-[#181818] hover:bg-[#282828] rounded-lg transition-colors"
           >
             {playlist.images[0] ? (
               <img
@@ -79,20 +79,20 @@ export function PlaylistList() {
                 className="w-12 h-12 rounded object-cover"
               />
             ) : (
-              <div className="w-12 h-12 rounded bg-gray-700 flex items-center justify-center text-gray-500">
+              <div className="w-12 h-12 rounded bg-[#282828] flex items-center justify-center text-[#535353]">
                 🎵
               </div>
             )}
             <div className="flex-1 min-w-0">
               <div className="text-white font-medium truncate">{playlist.name}</div>
-              <div className="text-xs text-gray-400">{playlist.tracks.total} tracks</div>
+              <div className="text-xs text-[#B3B3B3]">{playlist.tracks.total} tracks</div>
             </div>
             <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
               {hasAutoUpdate(playlist) && (
                 <button
                   onClick={() => handleUpdate(playlist.id)}
                   disabled={updatingId === playlist.id}
-                  className="p-2 text-green-400 hover:bg-gray-700 rounded disabled:opacity-50"
+                  className="p-2 text-[#1DB954] hover:bg-[#282828] rounded disabled:opacity-50"
                   title="Refresh playlist"
                 >
                   {updatingId === playlist.id ? '⏳' : '🔄'}
@@ -100,7 +100,7 @@ export function PlaylistList() {
               )}
               <button
                 onClick={() => handleDelete(playlist)}
-                className="p-2 text-red-400 hover:bg-gray-700 rounded"
+                className="p-2 text-[#B3B3B3] hover:text-red-400 hover:bg-[#282828] rounded"
                 title="Remove playlist"
               >
                 🗑️

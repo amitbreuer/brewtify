@@ -19,8 +19,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
-      <header className="sticky top-0 bg-gray-900 border-b border-gray-700 z-10">
+    <div className="min-h-screen bg-[#121212] text-white pb-20">
+      <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10">
         <Profile onProfileLoaded={onProfileLoaded} />
       </header>
 
@@ -30,7 +30,7 @@ export default function App() {
 
       <button
         onClick={() => setView('create')}
-        className="fixed bottom-6 left-4 right-4 py-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl text-lg shadow-lg shadow-green-900/50"
+        className="fixed bottom-6 left-4 right-4 py-4 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-lg shadow-lg"
       >
         + Create Playlist
       </button>

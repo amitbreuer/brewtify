@@ -147,10 +147,10 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+    <div className="min-h-screen bg-[#121212] text-white flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 bg-gray-900 border-b border-gray-700 z-10 p-4 flex items-center gap-3">
-        <button onClick={onBack} className="text-gray-400 hover:text-white text-xl">
+      <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10 p-4 flex items-center gap-3">
+        <button onClick={onBack} className="text-[#B3B3B3] hover:text-white text-xl">
           ←
         </button>
         <h1 className="text-lg font-semibold">Create Playlist</h1>
@@ -163,21 +163,21 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           placeholder="Playlist name"
           value={playlistName}
           onChange={(e) => setPlaylistName(e.target.value)}
-          className="w-full p-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+          className="w-full p-3 bg-[#282828] border border-[#535353] rounded-xl text-white placeholder-[#535353] focus:outline-none focus:border-[#1DB954]"
         />
 
         {/* Track count - pill buttons */}
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Number of tracks</label>
+          <label className="text-sm text-[#B3B3B3] mb-2 block">Number of tracks</label>
           <div className="flex gap-2">
             {TRACK_OPTIONS.map((n) => (
               <button
                 key={n}
                 onClick={() => setSongCount(n)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${
                   songCount === n
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    ? 'bg-[#1DB954] text-black'
+                    : 'bg-[#282828] text-[#B3B3B3] hover:bg-[#333333]'
                 }`}
               >
                 {n}
@@ -189,19 +189,19 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         {/* Selected artists chips */}
         {selectedArtists.size > 0 && (
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">
+            <label className="text-sm text-[#B3B3B3] mb-2 block">
               Selected ({selectedArtists.size})
             </label>
             <div className="flex flex-wrap gap-2">
               {Array.from(selectedArtists.entries()).map(([id, name]) => (
                 <span
                   key={id}
-                  className="px-3 py-1 bg-green-900/60 text-green-300 rounded-full text-sm flex items-center gap-1"
+                  className="px-3 py-1 bg-[#1DB954]/20 text-[#1DB954] rounded-full text-sm flex items-center gap-1"
                 >
                   {name}
                   <button
                     onClick={() => toggleArtist({ id, name } as Artist)}
-                    className="text-green-400 hover:text-white ml-1"
+                    className="text-[#1DB954] hover:text-white ml-1"
                   >
                     ×
                   </button>
@@ -218,19 +218,19 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
             placeholder="Search artists..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 p-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+            className="flex-1 p-3 bg-[#282828] border border-[#535353] rounded-xl text-white placeholder-[#535353] focus:outline-none focus:border-[#1DB954]"
           />
           <button
             onClick={() => setFiltersOpen(!filtersOpen)}
             className={`px-4 rounded-xl flex items-center gap-1.5 text-sm font-medium transition-colors ${
               filtersOpen || selectedGenres.size > 0
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-800 text-gray-400 border border-gray-600 hover:bg-gray-700'
+                ? 'bg-[#1DB954] text-black'
+                : 'bg-[#282828] text-[#B3B3B3] border border-[#535353] hover:bg-[#333333]'
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
             {selectedGenres.size > 0 && (
-              <span className="bg-white text-green-700 text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+              <span className="bg-black text-[#1DB954] text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
                 {selectedGenres.size}
               </span>
             )}
@@ -239,13 +239,13 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
 
         {/* Filter panel */}
         {filtersOpen && sortedGenres.length > 0 && (
-          <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
+          <div className="bg-[#181818] rounded-xl p-4 flex flex-col gap-3 border border-[#282828]">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-300">Genres</span>
+              <span className="text-sm font-medium text-[#B3B3B3]">Genres</span>
               {selectedGenres.size > 0 && (
                 <button
                   onClick={() => setSelectedGenres(new Set())}
-                  className="text-xs text-green-400 hover:text-green-300"
+                  className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                 >
                   Clear all
                 </button>
@@ -258,8 +258,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                   onClick={() => toggleGenre(genre)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                     selectedGenres.has(genre)
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                      ? 'bg-[#1DB954] text-black'
+                      : 'bg-[#282828] text-[#B3B3B3] hover:bg-[#333333]'
                   }`}
                 >
                   {genre}
@@ -271,7 +271,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
 
         {/* Artist grid - tiles */}
         {loadingArtists ? (
-          <div className="text-gray-400 text-center py-8">Loading artists...</div>
+          <div className="text-[#B3B3B3] text-center py-8">Loading artists...</div>
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {filteredArtists.slice(0, 60).map((artist) => {
@@ -282,8 +282,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                   onClick={() => toggleArtist(artist)}
                   className={`relative flex flex-col items-center p-3 rounded-xl transition-all ${
                     isSelected
-                      ? 'bg-green-600 ring-2 ring-green-400'
-                      : 'bg-gray-800 hover:bg-gray-700'
+                      ? 'bg-[#1DB954]/20 ring-2 ring-[#1DB954]'
+                      : 'bg-[#181818] hover:bg-[#282828]'
                   }`}
                 >
                   {artist.images[0] ? (
@@ -293,7 +293,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                       className="w-16 h-16 rounded-full object-cover mb-2"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-full bg-gray-700 mb-2 flex items-center justify-center text-2xl">
+                    <div className="w-16 h-16 rounded-full bg-[#282828] mb-2 flex items-center justify-center text-2xl">
                       🎤
                     </div>
                   )}
@@ -301,8 +301,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                     {artist.name}
                   </span>
                   {isSelected && (
-                    <div className="absolute top-1 right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                      <span className="text-green-600 text-xs font-bold">✓</span>
+                    <div className="absolute top-1 right-1 w-5 h-5 bg-[#1DB954] rounded-full flex items-center justify-center">
+                      <span className="text-black text-xs font-bold">✓</span>
                     </div>
                   )}
                 </button>
@@ -314,17 +314,17 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
 
       {/* Status */}
       {status && (
-        <div className="fixed bottom-20 left-4 right-4 text-sm text-gray-300 text-center bg-gray-800 py-2 rounded-lg">
+        <div className="fixed bottom-20 left-4 right-4 text-sm text-[#B3B3B3] text-center bg-[#282828] py-2 rounded-lg">
           {status}
         </div>
       )}
 
       {/* Create button - fixed bottom */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828]">
         <button
           onClick={handleCreate}
           disabled={creating || !playlistName || selectedArtists.size === 0}
-          className="w-full py-4 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold rounded-xl text-lg"
+          className="w-full py-4 bg-[#1DB954] hover:bg-[#1ED760] disabled:bg-[#282828] disabled:text-[#535353] text-black font-bold rounded-full text-lg"
         >
           {creating ? 'Creating...' : `Create (${selectedArtists.size} artists, ${songCount} tracks)`}
         </button>
