@@ -2,10 +2,12 @@ import { useState, useCallback } from 'react';
 import { Profile } from './components/Profile';
 import { PlaylistList } from './components/PlaylistList';
 import { CreatePlaylist } from './components/CreatePlaylist';
+import { PlaylistDetail } from './components/PlaylistDetail';
 
 export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [view, setView] = useState<'home' | 'create'>('home');
+  const [view, setView] = useState<'home' | 'create' | 'detail'>('home');
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
 
   const onProfileLoaded = useCallback(() => {}, []);
 
@@ -14,8 +16,22 @@ export default function App() {
     setView('home');
   };
 
+  const handlePlaylistClick = (playlistId: string) => {
+    setSelectedPlaylistId(playlistId);
+    setView('detail');
+  };
+
   if (view === 'create') {
     return <CreatePlaylist onCreated={handlePlaylistCreated} onBack={() => setView('home')} />;
+  }
+
+  if (view === 'detail' && selectedPlaylistId) {
+    return (
+      <PlaylistDetail
+        playlistId={selectedPlaylistId}
+        onBack={() => { setView('home'); setRefreshKey((k) => k + 1); }}
+      />
+    );
   }
 
   return (
@@ -25,7 +41,7 @@ export default function App() {
       </header>
 
       <main>
-        <PlaylistList key={refreshKey} />
+        <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} />
       </main>
 
       <button

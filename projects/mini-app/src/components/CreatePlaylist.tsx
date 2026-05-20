@@ -110,7 +110,10 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       const profile: UserProfile = await fetchProfile();
       const artistIds = Array.from(selectedArtists.keys());
       const artistIdsEncoded = artistIds.join(',');
-      const description = `[Auto-update: ${artistIdsEncoded}]`;
+      let description = `[Auto-update: ${artistIdsEncoded}`;
+      if (eraPreference !== 50) description += `|era=${eraPreference}`;
+      if (songCount !== 100) description += `|count=${songCount}`;
+      description += ']';
 
       const playlist = await createPlaylist(profile.id, playlistName, description);
       setStatus(`Gathering tracks from ${artistIds.length} artists...`);

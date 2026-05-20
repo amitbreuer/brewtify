@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
 
-export function PlaylistList() {
+interface PlaylistListProps {
+  onPlaylistClick: (playlistId: string) => void;
+}
+
+export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,12 +69,10 @@ export function PlaylistList() {
         <p className="text-[#B3B3B3]">No playlists found.</p>
       ) : (
         playlists.map((playlist) => (
-          <a
+          <div
             key={playlist.id}
-            href={playlist.external_urls.spotify}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 bg-[#181818] hover:bg-[#282828] rounded-lg transition-colors"
+            onClick={() => onPlaylistClick(playlist.id)}
+            className="flex items-center gap-3 p-3 bg-[#181818] hover:bg-[#282828] rounded-lg transition-colors cursor-pointer"
           >
             {playlist.images[0] ? (
               <img
@@ -87,7 +89,7 @@ export function PlaylistList() {
               <div className="text-white font-medium truncate">{playlist.name}</div>
               <div className="text-xs text-[#B3B3B3]">{playlist.tracks.total} tracks</div>
             </div>
-            <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
+            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
               {hasAutoUpdate(playlist) && (
                 <button
                   onClick={() => handleUpdate(playlist.id)}
@@ -106,7 +108,7 @@ export function PlaylistList() {
                 🗑️
               </button>
             </div>
-          </a>
+          </div>
         ))
       )}
     </div>

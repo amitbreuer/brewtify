@@ -184,6 +184,23 @@ export class SpotifyService {
     };
   }
 
+  async getArtists(accessToken: string, ids: string[]): Promise<Artist[]> {
+    // Spotify allows max 50 IDs per request
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      chunks.push(ids.slice(i, i + 50));
+    }
+    const results: Artist[] = [];
+    for (const chunk of chunks) {
+      const data = await this.makeRequest<{ artists: Artist[] }>(
+        `/artists?ids=${chunk.join(',')}`,
+        accessToken
+      );
+      results.push(...data.artists);
+    }
+    return results;
+  }
+
   async getArtistAlbums(
     accessToken: string,
     artistId: string,
@@ -203,7 +220,7 @@ export class SpotifyService {
 
     // Fetch from API
     const result = await this.makeRequest<any>(
-      `/artists/${artistId}/albums?limit=${limit}&offset=${offset}`,
+      `/artists/${artistId}/albums?limit=${limit}&offset=${offset}&include_groups=album,single,appears_on`,
       accessToken
     );
 
@@ -257,14 +274,18 @@ export class SpotifyService {
 
     const results = await Promise.allSettled(albumTracksPromises);
 
-    // Step 3: Collect all tracks and deduplicate
+    // Step 3: Collect all tracks, deduplicate, and filter to only include
+    // tracks where this artist is credited
     const allTracks: Track[] = [];
     for (const result of results) {
       if (result.status === 'fulfilled') {
         for (const track of result.value) {
           if (!seenTrackIds.has(track.id)) {
-            seenTrackIds.add(track.id);
-            allTracks.push(track);
+            const hasArtist = track.artists?.some((a: any) => a.id === artistId);
+            if (hasArtist) {
+              seenTrackIds.add(track.id);
+              allTracks.push(track);
+            }
           }
         }
       }

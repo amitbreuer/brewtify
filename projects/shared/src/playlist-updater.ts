@@ -130,10 +130,12 @@ export async function fillPlaylist(
 export function parseArtistIdsFromDescription(description: string | null | undefined): string[] {
   if (!description) return [];
 
-  // Try new format first: [Auto-update: id1,id2,id3]
+  // Try new format first: [Auto-update: id1,id2,id3] or [Auto-update: id1,id2|era=50|count=100]
   let match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
   if (match) {
-    return match[1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+    // Split on pipe first to separate artist IDs from settings
+    const parts = match[1].split('|');
+    return parts[0].split(',').map(id => id.trim()).filter(id => id.length > 0);
   }
 
   // Fallback to old format: ARTISTS:id1,id2,id3

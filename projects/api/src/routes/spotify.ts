@@ -47,6 +47,34 @@ spotifyRoutes.get('/api/playlists', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/playlists/:playlistId
+spotifyRoutes.get('/api/playlists/:playlistId', async (req: Request, res: Response) => {
+  try {
+    const playlist = await spotifyService.getPlaylist(
+      (req as any).spotifyToken,
+      req.params.playlistId as string
+    );
+    res.json(playlist);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/artists?ids=id1,id2,id3 — get multiple artists by IDs
+spotifyRoutes.get('/api/artists', async (req: Request, res: Response) => {
+  try {
+    const ids = (req.query.ids as string || '').split(',').filter(Boolean);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'ids query param required' });
+      return;
+    }
+    const artists = await spotifyService.getArtists((req as any).spotifyToken, ids);
+    res.json(artists);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/artists/followed
 spotifyRoutes.get('/api/artists/followed', async (req: Request, res: Response) => {
   try {

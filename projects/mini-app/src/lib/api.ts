@@ -88,3 +88,11 @@ export async function updatePlaylistDescription(playlistId: string, description:
     body: JSON.stringify({ description }),
   });
 }
+
+export async function fetchPlaylist(playlistId: string): Promise<Playlist> {
+  return fetchAPI<Playlist>(`/api/playlists/${playlistId}`);
+}
+
+export async function fetchArtistsByIds(ids: string[]): Promise<Artist[]> {
+  return fetchAPI<Artist[]>(`/api/artists?ids=${ids.join(',')}`);
+}
