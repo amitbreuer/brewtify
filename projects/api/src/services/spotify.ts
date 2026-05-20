@@ -248,7 +248,11 @@ export class SpotifyService {
     // Step 2: Fetch tracks for all albums in parallel (30 tracks per album)
     const albumTracksPromises = albumsResponse.items.map(async (album) => {
       const tracksResponse = await this.getAlbumTracks(accessToken, album.id, 30, 0);
-      return tracksResponse.items;
+      // Attach album release_date to each track
+      return tracksResponse.items.map((track) => ({
+        ...track,
+        album: { ...track.album, release_date: album.release_date },
+      }));
     });
 
     const results = await Promise.allSettled(albumTracksPromises);

@@ -24,6 +24,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [playlistName, setPlaylistName] = useState('');
   const [songCount, setSongCount] = useState(100);
+  const [eraPreference, setEraPreference] = useState(50); // 0=old, 100=new, 50=mixed
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -131,8 +132,36 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         return;
       }
 
-      const shuffled = allTracks.sort(() => Math.random() - 0.5);
-      const selected = shuffled.slice(0, songCount);
+      // Weighted selection based on era preference
+      // Sort tracks by release date (oldest first)
+      const sorted = allTracks
+        .filter((t) => t.album?.release_date)
+        .sort((a, b) => (a.album.release_date! > b.album.release_date! ? 1 : -1));
+      const undated = allTracks.filter((t) => !t.album?.release_date);
+
+      let selected: Track[];
+      if (eraPreference === 50 || sorted.length === 0) {
+        // Neutral — pure shuffle
+        const shuffled = allTracks.sort(() => Math.random() - 0.5);
+        selected = shuffled.slice(0, songCount);
+      } else {
+        // Weight by position: eraPreference 0 = prefer old (low index), 100 = prefer new (high index)
+        const bias = eraPreference / 100; // 0..1
+        const weighted = sorted.map((track, i) => {
+          const position = sorted.length > 1 ? i / (sorted.length - 1) : 0.5;
+          // Higher weight for tracks matching the bias direction
+          const weight = Math.pow(bias < 0.5 ? (1 - position) : position, 2 + Math.abs(bias - 0.5) * 6);
+          return { track, weight: weight + Math.random() * 0.1 };
+        });
+        weighted.sort((a, b) => b.weight - a.weight);
+        selected = weighted.slice(0, songCount).map((w) => w.track);
+        // Fill remaining from undated if needed
+        if (selected.length < songCount) {
+          const shuffledUndated = undated.sort(() => Math.random() - 0.5);
+          selected.push(...shuffledUndated.slice(0, songCount - selected.length));
+        }
+      }
+
       const trackUris = selected.map((t) => t.uri);
 
       setStatus(`Adding ${selected.length} tracks...`);
@@ -183,6 +212,26 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                 {n}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Era preference slider */}
+        <div>
+          <label className="text-sm text-[#B3B3B3] mb-2 block">
+            Era preference
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={eraPreference}
+            onChange={(e) => setEraPreference(Number(e.target.value))}
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-[#535353] accent-[#1DB954]"
+          />
+          <div className="flex justify-between text-xs text-[#B3B3B3] mt-1">
+            <span>Older</span>
+            <span className={eraPreference === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
+            <span>Newer</span>
           </div>
         </div>
 
