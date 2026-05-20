@@ -7,6 +7,7 @@ import {
   createPlaylist,
   addTracksToPlaylist,
 } from '../lib/api';
+import { MinusIcon, MicIcon, CheckIcon } from './Icons';
 
 interface CreatePlaylistProps {
   onCreated: () => void;
@@ -367,7 +368,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                     onClick={() => toggleArtist({ id, name } as Artist)}
                     className="text-[#B3B3B3] hover:text-red-400 ml-1"
                   >
-                    ×
+                    <MinusIcon size={14} />
                   </button>
                 </div>
               ))}
@@ -457,8 +458,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                       className="w-16 h-16 rounded-full object-cover mb-2"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-full bg-[#282828] mb-2 flex items-center justify-center text-2xl">
-                      🎤
+                    <div className="w-16 h-16 rounded-full bg-[#282828] mb-2 flex items-center justify-center text-[#B3B3B3]">
+                      <MicIcon size={20} />
                     </div>
                   )}
                   <span className="text-xs text-center leading-tight line-clamp-2 text-white">
@@ -466,7 +467,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                   </span>
                   {isSelected && (
                     <div className="absolute top-1 right-1 w-5 h-5 bg-[#1DB954] rounded-full flex items-center justify-center">
-                      <span className="text-black text-xs font-bold">✓</span>
+                      <CheckIcon size={12} className="text-black" />
                     </div>
                   )}
                 </button>

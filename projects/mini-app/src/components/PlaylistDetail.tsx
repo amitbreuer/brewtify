@@ -7,6 +7,7 @@ import {
   updatePlaylist,
   updatePlaylistDescription,
 } from '../lib/api';
+import { MusicIcon, MicIcon, MinusIcon, CheckIcon } from './Icons';
 
 interface PlaylistDetailProps {
   playlistId: string;
@@ -305,8 +306,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
               className="w-20 h-20 rounded-lg object-cover"
             />
           ) : (
-            <div className="w-20 h-20 rounded-lg bg-[#282828] flex items-center justify-center text-3xl">
-              🎵
+            <div className="w-20 h-20 rounded-lg bg-[#282828] flex items-center justify-center text-[#535353]">
+              <MusicIcon size={32} />
             </div>
           )}
           <div>
@@ -494,9 +495,9 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     {editMode && (
                       <button
                         onClick={() => toggleArtist(artist)}
-                        className="text-[#B3B3B3] hover:text-red-400 ml-1 text-xs"
+                        className="text-[#B3B3B3] hover:text-red-400 ml-1"
                       >
-                        ×
+                        <MinusIcon size={14} />
                       </button>
                     )}
                   </div>
@@ -536,8 +537,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                 className="w-10 h-10 rounded-full object-cover mb-1"
                               />
                             ) : (
-                              <div className="w-10 h-10 rounded-full bg-[#333333] mb-1 flex items-center justify-center text-sm">
-                                🎤
+                              <div className="w-10 h-10 rounded-full bg-[#333333] mb-1 flex items-center justify-center text-[#B3B3B3]">
+                                <MicIcon size={16} />
                               </div>
                             )}
                             <span className="text-[10px] text-center leading-tight line-clamp-2 text-white">
@@ -545,7 +546,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                             </span>
                             {isSelected && (
                               <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-[#1DB954] rounded-full flex items-center justify-center">
-                                <span className="text-black text-[8px] font-bold">✓</span>
+                                <CheckIcon size={10} className="text-black" />
                               </div>
                             )}
                           </button>
@@ -603,7 +604,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
               disabled={updating}
               className="w-full py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full disabled:opacity-50"
             >
-              {updating ? 'Refreshing...' : '🔄 Refresh Playlist'}
+              {updating ? 'Refreshing...' : 'Refresh Playlist'}
             </button>
           )
         )}

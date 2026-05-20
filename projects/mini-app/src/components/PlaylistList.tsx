@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
+import { RefreshIcon, MusicIcon, MinusIcon } from './Icons';
+
+interface ConfirmDialog {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmColor?: 'green' | 'red';
+  onConfirm: () => void;
+}
 
 interface PlaylistListProps {
   onPlaylistClick: (playlistId: string) => void;
@@ -11,6 +20,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<ConfirmDialog | null>(null);
 
   const loadPlaylists = async () => {
     setLoading(true);
@@ -31,27 +41,44 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const hasAutoUpdate = (playlist: Playlist) =>
     playlist.description?.includes('[Auto-update:');
 
-  const handleUpdate = async (playlistId: string) => {
-    setUpdatingId(playlistId);
-    try {
-      const result = await updatePlaylist(playlistId);
-      alert(`Updated with ${result.trackCount} tracks from ${result.artistCount} artists!`);
-      await loadPlaylists();
-    } catch (err: any) {
-      alert(`Update failed: ${err.message}`);
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleUpdate = (playlistId: string) => {
+    const playlist = playlists.find((p) => p.id === playlistId);
+    setDialog({
+      title: 'Refresh Playlist',
+      message: `Refresh "${playlist?.name}" with new randomized tracks?`,
+      confirmLabel: 'Refresh',
+      confirmColor: 'green',
+      onConfirm: async () => {
+        setDialog(null);
+        setUpdatingId(playlistId);
+        try {
+          await updatePlaylist(playlistId);
+          await loadPlaylists();
+        } catch (err: any) {
+          alert(`Update failed: ${err.message}`);
+        } finally {
+          setUpdatingId(null);
+        }
+      },
+    });
   };
 
-  const handleDelete = async (playlist: Playlist) => {
-    if (!confirm(`Remove "${playlist.name}" from your library?`)) return;
-    try {
-      await deletePlaylist(playlist.id);
-      await loadPlaylists();
-    } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
-    }
+  const handleDelete = (playlist: Playlist) => {
+    setDialog({
+      title: 'Remove Playlist',
+      message: `Remove "${playlist.name}" from your library? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      confirmColor: 'red',
+      onConfirm: async () => {
+        setDialog(null);
+        try {
+          await deletePlaylist(playlist.id);
+          await loadPlaylists();
+        } catch (err: any) {
+          alert(`Delete failed: ${err.message}`);
+        }
+      },
+    });
   };
 
   if (loading) {
@@ -82,7 +109,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
               />
             ) : (
               <div className="w-12 h-12 rounded bg-[#282828] flex items-center justify-center text-[#535353]">
-                🎵
+                <MusicIcon size={20} />
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -94,10 +121,14 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
                 <button
                   onClick={() => handleUpdate(playlist.id)}
                   disabled={updatingId === playlist.id}
-                  className="p-2 text-[#1DB954] hover:bg-[#282828] rounded disabled:opacity-50"
+                  className="p-2 text-[#B3B3B3] hover:text-white hover:bg-[#282828] rounded disabled:opacity-50"
                   title="Refresh playlist"
                 >
-                  {updatingId === playlist.id ? '⏳' : '🔄'}
+                  {updatingId === playlist.id ? (
+                    <RefreshIcon size={16} className="animate-spin" />
+                  ) : (
+                    <RefreshIcon size={16} />
+                  )}
                 </button>
               )}
               <button
@@ -105,11 +136,39 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
                 className="p-2 text-[#B3B3B3] hover:text-red-400 hover:bg-[#282828] rounded"
                 title="Remove playlist"
               >
-                🗑️
+                <MinusIcon size={16} />
               </button>
             </div>
           </div>
         ))
+      )}
+
+      {/* Confirm dialog */}
+      {dialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-[#282828] rounded-2xl p-5 w-full max-w-xs flex flex-col gap-4">
+            <h3 className="text-white font-semibold text-base">{dialog.title}</h3>
+            <p className="text-[#B3B3B3] text-sm">{dialog.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDialog(null)}
+                className="flex-1 py-2.5 bg-[#181818] text-white font-medium rounded-full text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={dialog.onConfirm}
+                className={`flex-1 py-2.5 font-bold rounded-full text-sm ${
+                  dialog.confirmColor === 'red'
+                    ? 'bg-red-500 hover:bg-red-400 text-white'
+                    : 'bg-[#1DB954] hover:bg-[#1ED760] text-black'
+                }`}
+              >
+                {dialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

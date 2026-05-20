@@ -48,7 +48,7 @@ export default function App() {
         onClick={() => setView('create')}
         className="fixed bottom-6 left-4 right-4 py-4 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-lg shadow-lg"
       >
-        + Create Playlist
+        Create Playlist
       </button>
     </div>
   );
