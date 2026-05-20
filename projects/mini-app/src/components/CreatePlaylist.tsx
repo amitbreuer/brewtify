@@ -20,6 +20,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [selectedArtists, setSelectedArtists] = useState<Map<string, string>>(new Map());
   const [loadingArtists, setLoadingArtists] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGenres, setSelectedGenres] = useState<Set<string>>(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [playlistName, setPlaylistName] = useState('');
   const [songCount, setSongCount] = useState(100);
   const [creating, setCreating] = useState(false);
@@ -64,13 +66,38 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
     });
   };
 
-  const filteredArtists = searchQuery
-    ? artists.filter(
-        (a) =>
-          a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          a.genres.some((g) => g.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : artists;
+  const toggleGenre = (genre: string) => {
+    setSelectedGenres((prev) => {
+      const next = new Set(prev);
+      if (next.has(genre)) {
+        next.delete(genre);
+      } else {
+        next.add(genre);
+      }
+      return next;
+    });
+  };
+
+  // Collect all genres sorted by frequency
+  const allGenres = artists.reduce((acc, a) => {
+    a.genres.forEach((g) => acc.set(g, (acc.get(g) || 0) + 1));
+    return acc;
+  }, new Map<string, number>());
+
+  const sortedGenres = Array.from(allGenres.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre]) => genre);
+
+  const filteredArtists = artists.filter((a) => {
+    const matchesSearch = !searchQuery ||
+      a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.genres.some((g) => g.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesGenre = selectedGenres.size === 0 ||
+      a.genres.some((g) => selectedGenres.has(g));
+
+    return matchesSearch && matchesGenre;
+  });
 
   const handleCreate = async () => {
     if (!playlistName || selectedArtists.size === 0) return;
@@ -184,14 +211,63 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           </div>
         )}
 
-        {/* Artist search */}
-        <input
-          type="text"
-          placeholder="Search artists..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full p-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
-        />
+        {/* Search + Filter row */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Search artists..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 p-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
+          />
+          <button
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            className={`px-4 rounded-xl flex items-center gap-1.5 text-sm font-medium transition-colors ${
+              filtersOpen || selectedGenres.size > 0
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-800 text-gray-400 border border-gray-600 hover:bg-gray-700'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            {selectedGenres.size > 0 && (
+              <span className="bg-white text-green-700 text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                {selectedGenres.size}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Filter panel */}
+        {filtersOpen && sortedGenres.length > 0 && (
+          <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-300">Genres</span>
+              {selectedGenres.size > 0 && (
+                <button
+                  onClick={() => setSelectedGenres(new Set())}
+                  className="text-xs text-green-400 hover:text-green-300"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sortedGenres.slice(0, 40).map((genre) => (
+                <button
+                  key={genre}
+                  onClick={() => toggleGenre(genre)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    selectedGenres.has(genre)
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Artist grid - tiles */}
         {loadingArtists ? (
