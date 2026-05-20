@@ -199,3 +199,17 @@ export function parseWeightsFromDescription(description: string | null | undefin
 
   return weights;
 }
+
+/**
+ * Checks if auto-update is disabled for a playlist.
+ * Looks for `|disabled` flag in the description settings.
+ */
+export function isAutoUpdateDisabled(description: string | null | undefined): boolean {
+  if (!description) return false;
+
+  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
+  if (!match) return false;
+
+  const parts = match[1].split('|');
+  return parts.slice(1).some(p => p.trim() === 'disabled');
+}

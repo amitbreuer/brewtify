@@ -249,6 +249,17 @@ function parseWeightsFromDescription(description) {
 }
 
 /**
+ * Check if auto-update is disabled for a playlist
+ */
+function isAutoUpdateDisabled(description) {
+  if (!description) return false;
+  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
+  if (!match) return false;
+  const parts = match[1].split('|');
+  return parts.slice(1).some(p => p.trim() === 'disabled');
+}
+
+/**
  * Fisher-Yates shuffle — produces a uniformly random permutation
  */
 function fisherYatesShuffle(array) {
@@ -582,6 +593,12 @@ async function main() {
       console.log(`\n🎶 Updating playlist: ${playlist.name}`);
       console.log(`   ID: ${playlist.id}`);
       console.log(`   Current tracks: ${playlist.tracks.total}`);
+
+      // Check if auto-update is disabled
+      if (isAutoUpdateDisabled(playlist.description)) {
+        console.log(`   ⏸  Auto-refresh disabled - skipping`);
+        continue;
+      }
 
       // Parse artist IDs from description
       const artistIds = parseArtistIdsFromDescription(playlist.description);

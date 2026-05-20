@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { spotifyService } from '../services/spotify';
 import { getAccessTokenForUser } from './auth';
-import { parseArtistIdsFromDescription, parseWeightsFromDescription, selectRandomTracks } from '@brewtify/shared';
+import { parseArtistIdsFromDescription, parseWeightsFromDescription, isAutoUpdateDisabled, selectRandomTracks } from '@brewtify/shared';
 
 export const spotifyRoutes = Router();
 

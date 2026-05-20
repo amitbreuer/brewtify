@@ -18,11 +18,12 @@ interface PlaylistSettings {
   weights: Map<string, number>;
   era: number;
   count: number;
+  disabled: boolean;
 }
 
 function parseSettings(description: string): PlaylistSettings {
   const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
-  if (!match) return { artistIds: [], weights: new Map(), era: 50, count: 100 };
+  if (!match) return { artistIds: [], weights: new Map(), era: 50, count: 100, disabled: false };
 
   const parts = match[1].split('|');
   const artistParts = parts[0].split(',').map((s) => s.trim()).filter(Boolean);
@@ -45,14 +46,19 @@ function parseSettings(description: string): PlaylistSettings {
 
   let era = 50;
   let count = 100;
+  let disabled = false;
 
   for (const part of parts.slice(1)) {
+    if (part.trim() === 'disabled') {
+      disabled = true;
+      continue;
+    }
     const [key, val] = part.split('=');
     if (key === 'era') era = parseInt(val) || 50;
     if (key === 'count') count = parseInt(val) || 100;
   }
 
-  return { artistIds, weights, era, count };
+  return { artistIds, weights, era, count, disabled };
 }
 
 function encodeSettings(settings: PlaylistSettings): string {
@@ -71,6 +77,7 @@ function encodeSettings(settings: PlaylistSettings): string {
   let desc = `[Auto-update: ${artistsEncoded}`;
   if (settings.era !== 50) desc += `|era=${settings.era}`;
   if (settings.count !== 100) desc += `|count=${settings.count}`;
+  if (settings.disabled) desc += `|disabled`;
   desc += ']';
   return desc;
 }
@@ -80,7 +87,7 @@ const TRACK_OPTIONS = [60, 80, 100, 120, 140];
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100 });
+  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100, disabled: false });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -226,6 +233,27 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     }
   };
 
+  const handleSaveAndRefresh = async () => {
+    setSaving(true);
+    setStatus('Saving & refreshing...');
+    try {
+      const description = encodeSettings(settings);
+      await updatePlaylistDescription(playlistId, description);
+      setDirty(false);
+      setEditMode(false);
+      setStatus('Refreshing playlist...');
+      setUpdating(true);
+      const result = await updatePlaylist(playlistId);
+      setStatus(`✅ Saved & refreshed with ${result.trackCount} tracks!`);
+      await loadPlaylist();
+    } catch (err: any) {
+      setStatus(`❌ ${err.message}`);
+    } finally {
+      setSaving(false);
+      setUpdating(false);
+    }
+  };
+
   const filteredAllArtists = allArtists.filter((a) => {
     if (!searchQuery) return true;
     return a.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -283,9 +311,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
           )}
           <div>
             <div className="text-[#B3B3B3] text-sm">{playlist.tracks.total} tracks</div>
-            {isAutoUpdate && (
-              <div className="text-[#1DB954] text-xs mt-1">⚡ Auto-update enabled</div>
-            )}
           </div>
         </div>
 
@@ -309,6 +334,35 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     Edit
                   </button>
                 )}
+              </div>
+
+              {/* Auto-refresh toggle */}
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-[#B3B3B3]">Auto-refresh</label>
+                <button
+                  onClick={async () => {
+                    const newSettings = { ...settings, disabled: !settings.disabled };
+                    setSettings(newSettings);
+                    // Save immediately (no need for edit mode)
+                    try {
+                      const desc = encodeSettings(newSettings);
+                      await updatePlaylistDescription(playlistId, desc);
+                      setStatus('');
+                    } catch (err: any) {
+                      setSettings(settings); // revert
+                      setStatus(`❌ ${err.message}`);
+                    }
+                  }}
+                  className={`relative inline-flex items-center w-10 h-[22px] rounded-full transition-colors shrink-0 ${
+                    !settings.disabled ? 'bg-[#1DB954]' : 'bg-[#535353]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                      !settings.disabled ? 'translate-x-[22px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
               </div>
 
               {/* Track count */}
@@ -514,22 +568,33 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       )}
 
       {/* Bottom actions */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828] flex gap-3">
-        {editMode && dirty ? (
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828] flex gap-2">
+        {editMode ? (
           <>
             <button
               onClick={() => { setEditMode(false); setDirty(false); loadPlaylist(); }}
-              className="flex-1 py-3 bg-[#282828] text-white font-medium rounded-full"
+              className="py-3 px-4 bg-[#282828] text-white font-medium rounded-full text-sm"
             >
               Cancel
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+            {dirty && (
+              <>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || updating}
+                  className="flex-1 py-3 bg-[#282828] border border-[#1DB954] text-[#1DB954] font-bold rounded-full text-sm disabled:opacity-50"
+                >
+                  {saving && !updating ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleSaveAndRefresh}
+                  disabled={saving || updating}
+                  className="flex-1 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-sm disabled:opacity-50"
+                >
+                  {updating ? 'Refreshing...' : 'Save & Refresh'}
+                </button>
+              </>
+            )}
           </>
         ) : (
           isAutoUpdate && (
