@@ -203,10 +203,11 @@ async function makeRequest(endpoint, accessToken, options = {}) {
 function parseArtistIdsFromDescription(description) {
   if (!description) return [];
 
-  // Try new format first: [Auto-update: id1,id2,id3]
+  // Try new format first: [Auto-update: id1,id2,id3] or [Auto-update: id1:50,id2:30|era=50|count=100]
   let match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
   if (match) {
-    return match[1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+    const parts = match[1].split('|');
+    return parts[0].split(',').map(id => id.split(':')[0].trim()).filter(id => id.length > 0);
   }
 
   // Fallback to old format: ARTISTS:id1,id2,id3
@@ -216,6 +217,35 @@ function parseArtistIdsFromDescription(description) {
   }
 
   return [];
+}
+
+/**
+ * Parse artist weights from description.
+ * Returns undefined if no weights specified (equal distribution).
+ */
+function parseWeightsFromDescription(description) {
+  if (!description) return undefined;
+
+  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
+  if (!match) return undefined;
+
+  const parts = match[1].split('|');
+  const artistParts = parts[0].split(',').map(s => s.trim()).filter(Boolean);
+
+  const hasWeights = artistParts.some(p => p.includes(':'));
+  if (!hasWeights) return undefined;
+
+  const weights = new Map();
+  for (const part of artistParts) {
+    const [id, weightStr] = part.split(':');
+    if (id && weightStr) {
+      weights.set(id.trim(), parseInt(weightStr) || 0);
+    } else if (id) {
+      weights.set(id.trim(), 0);
+    }
+  }
+
+  return weights;
 }
 
 /**
@@ -231,23 +261,40 @@ function fisherYatesShuffle(array) {
 }
 
 /**
- * Select random tracks from multiple artists with equal per-artist weighting
+ * Select random tracks from multiple artists with configurable per-artist weighting
  */
-function selectRandomTracks(artistsTracks, trackCount) {
+function selectRandomTracks(artistsTracks, trackCount, weights) {
   const artistCount = artistsTracks.size;
   if (artistCount === 0) return [];
 
-  const tracksPerArtist = Math.floor(trackCount / artistCount);
-  const remainder = trackCount % artistCount;
-
   const selected = [];
-  let artistIndex = 0;
 
-  for (const tracks of artistsTracks.values()) {
-    const quota = tracksPerArtist + (artistIndex < remainder ? 1 : 0);
-    const shuffled = fisherYatesShuffle(tracks);
-    selected.push(...shuffled.slice(0, quota));
-    artistIndex++;
+  if (weights && weights.size > 0) {
+    const totalWeight = Array.from(weights.values()).reduce((sum, w) => sum + w, 0);
+    let allocated = 0;
+    const entries = Array.from(artistsTracks.entries());
+
+    for (let i = 0; i < entries.length; i++) {
+      const [artistId, tracks] = entries[i];
+      const weight = weights.get(artistId) || 0;
+      const quota = i === entries.length - 1
+        ? trackCount - allocated
+        : Math.round((weight / totalWeight) * trackCount);
+      const shuffled = fisherYatesShuffle(tracks);
+      selected.push(...shuffled.slice(0, quota));
+      allocated += Math.min(quota, shuffled.length);
+    }
+  } else {
+    const tracksPerArtist = Math.floor(trackCount / artistCount);
+    const remainder = trackCount % artistCount;
+    let artistIndex = 0;
+
+    for (const tracks of artistsTracks.values()) {
+      const quota = tracksPerArtist + (artistIndex < remainder ? 1 : 0);
+      const shuffled = fisherYatesShuffle(tracks);
+      selected.push(...shuffled.slice(0, quota));
+      artistIndex++;
+    }
   }
 
   return fisherYatesShuffle(selected);
@@ -361,7 +408,7 @@ async function replacePlaylistTracks(accessToken, playlistId, trackUris) {
 /**
  * Fill playlist with tracks from artists
  */
-async function fillPlaylist(accessToken, playlistId, artistIds, trackCount, replaceExisting = false) {
+async function fillPlaylist(accessToken, playlistId, artistIds, trackCount, replaceExisting = false, weights = undefined) {
   try {
     // Fetch tracks for all artists in parallel
     const trackPromises = artistIds.map((artistId) =>
@@ -380,7 +427,7 @@ async function fillPlaylist(accessToken, playlistId, artistIds, trackCount, repl
     });
 
     // Select random tracks
-    const selectedTracks = selectRandomTracks(artistsTracks, trackCount);
+    const selectedTracks = selectRandomTracks(artistsTracks, trackCount, weights);
 
     if (selectedTracks.length === 0) {
       return {
@@ -487,7 +534,8 @@ async function main() {
         return;
       }
 
-      console.log(`   Artists: ${artistIds.length}`);
+      const weights = parseWeightsFromDescription(description);
+      console.log(`   Artists: ${artistIds.length}${weights ? ' (custom weights)' : ''}`);
 
       // Update playlist
       const result = await fillPlaylist(
@@ -495,7 +543,8 @@ async function main() {
         targetPlaylistId,
         artistIds,
         trackCount,
-        true // Replace existing tracks
+        true, // Replace existing tracks
+        weights
       );
 
       if (result.success) {
@@ -542,7 +591,8 @@ async function main() {
         continue;
       }
 
-      console.log(`   Artists: ${artistIds.length}`);
+      const weights = parseWeightsFromDescription(playlist.description);
+      console.log(`   Artists: ${artistIds.length}${weights ? ' (custom weights)' : ''}`);
 
       // Update playlist
       const result = await fillPlaylist(
@@ -550,7 +600,8 @@ async function main() {
         playlist.id,
         artistIds,
         playlist.tracks.total,
-        true // Replace existing tracks
+        true, // Replace existing tracks
+        weights
       );
 
       if (result.success) {

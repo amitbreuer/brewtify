@@ -18,6 +18,7 @@ const TRACK_OPTIONS = [60, 80, 100, 120, 140];
 export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [selectedArtists, setSelectedArtists] = useState<Map<string, string>>(new Map());
+  const [artistWeights, setArtistWeights] = useState<Map<string, number>>(new Map());
   const [loadingArtists, setLoadingArtists] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenres, setSelectedGenres] = useState<Set<string>>(new Set());
@@ -60,12 +61,49 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       const next = new Map(prev);
       if (next.has(artist.id)) {
         next.delete(artist.id);
+        setArtistWeights((w) => { const nw = new Map(w); nw.delete(artist.id); return nw; });
       } else {
         next.set(artist.id, artist.name);
       }
       return next;
     });
   };
+
+  const setWeight = (artistId: string, weight: number) => {
+    setArtistWeights((prev) => {
+      const next = new Map(prev);
+      next.set(artistId, Math.max(0, Math.min(100, weight)));
+      return next;
+    });
+  };
+
+  // Compute display percentages (normalized)
+  const getDisplayPercentages = (): Map<string, number> => {
+    const count = selectedArtists.size;
+    if (count === 0) return new Map();
+
+    if (artistWeights.size === 0) {
+      // All equal
+      const equal = Math.round(100 / count);
+      const result = new Map<string, number>();
+      Array.from(selectedArtists.keys()).forEach((id) => result.set(id, equal));
+      return result;
+    }
+
+    const totalWeight = Array.from(selectedArtists.keys()).reduce(
+      (sum, id) => sum + (artistWeights.get(id) || Math.round(100 / count)),
+      0
+    );
+    const result = new Map<string, number>();
+    Array.from(selectedArtists.keys()).forEach((id) => {
+      const w = artistWeights.get(id) || Math.round(100 / count);
+      result.set(id, Math.round((w / totalWeight) * 100));
+    });
+    return result;
+  };
+
+  const hasCustomWeights = artistWeights.size > 0;
+  const displayPercentages = getDisplayPercentages();
 
   const toggleGenre = (genre: string) => {
     setSelectedGenres((prev) => {
@@ -109,7 +147,14 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
     try {
       const profile: UserProfile = await fetchProfile();
       const artistIds = Array.from(selectedArtists.keys());
-      const artistIdsEncoded = artistIds.join(',');
+      // Encode artist IDs with weights if custom weights are set
+      let artistIdsEncoded: string;
+      if (hasCustomWeights) {
+        const percentages = getDisplayPercentages();
+        artistIdsEncoded = artistIds.map((id) => `${id}:${percentages.get(id) || 0}`).join(',');
+      } else {
+        artistIdsEncoded = artistIds.join(',');
+      }
       let description = `[Auto-update: ${artistIdsEncoded}`;
       if (eraPreference !== 50) description += `|era=${eraPreference}`;
       if (songCount !== 100) description += `|count=${songCount}`;
@@ -122,48 +167,69 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         artistIds.map((id) => fetchAllArtistTracks(id))
       );
 
-      const allTracks: Track[] = [];
-      for (const result of results) {
+      // Group tracks by artist for weighted selection
+      const artistTrackMap = new Map<string, Track[]>();
+      artistIds.forEach((id, index) => {
+        const result = results[index];
         if (result.status === 'fulfilled') {
-          allTracks.push(...result.value);
+          artistTrackMap.set(id, result.value);
         }
-      }
+      });
 
-      if (allTracks.length === 0) {
+      if (artistTrackMap.size === 0) {
         setStatus('No tracks found!');
         setCreating(false);
         return;
       }
 
-      // Weighted selection based on era preference
-      // Sort tracks by release date (oldest first)
-      const sorted = allTracks
-        .filter((t) => t.album?.release_date)
-        .sort((a, b) => (a.album.release_date! > b.album.release_date! ? 1 : -1));
-      const undated = allTracks.filter((t) => !t.album?.release_date);
+      // Calculate per-artist quotas based on weights
+      const percentages = getDisplayPercentages();
+      const totalPct = Array.from(artistTrackMap.keys()).reduce(
+        (sum, id) => sum + (percentages.get(id) || 0), 0
+      );
 
-      let selected: Track[];
-      if (eraPreference === 50 || sorted.length === 0) {
-        // Neutral — pure shuffle
-        const shuffled = allTracks.sort(() => Math.random() - 0.5);
-        selected = shuffled.slice(0, songCount);
-      } else {
-        // Weight by position: eraPreference 0 = prefer old (low index), 100 = prefer new (high index)
-        const bias = eraPreference / 100; // 0..1
-        const weighted = sorted.map((track, i) => {
-          const position = sorted.length > 1 ? i / (sorted.length - 1) : 0.5;
-          // Higher weight for tracks matching the bias direction
-          const weight = Math.pow(bias < 0.5 ? (1 - position) : position, 2 + Math.abs(bias - 0.5) * 6);
-          return { track, weight: weight + Math.random() * 0.1 };
-        });
-        weighted.sort((a, b) => b.weight - a.weight);
-        selected = weighted.slice(0, songCount).map((w) => w.track);
-        // Fill remaining from undated if needed
-        if (selected.length < songCount) {
-          const shuffledUndated = undated.sort(() => Math.random() - 0.5);
-          selected.push(...shuffledUndated.slice(0, songCount - selected.length));
+      let selected: Track[] = [];
+      let allocated = 0;
+      const entries = Array.from(artistTrackMap.entries());
+
+      for (let i = 0; i < entries.length; i++) {
+        const [artistId, tracks] = entries[i];
+        const pct = percentages.get(artistId) || Math.round(100 / entries.length);
+        const quota = i === entries.length - 1
+          ? songCount - allocated
+          : Math.round((pct / totalPct) * songCount);
+
+        // Apply era preference within this artist's tracks
+        const sorted = tracks
+          .filter((t) => t.album?.release_date)
+          .sort((a, b) => (a.album.release_date! > b.album.release_date! ? 1 : -1));
+        const undated = tracks.filter((t) => !t.album?.release_date);
+
+        let artistSelected: Track[];
+        if (eraPreference === 50 || sorted.length === 0) {
+          const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+          artistSelected = shuffled.slice(0, quota);
+        } else {
+          const bias = eraPreference / 100;
+          const weighted = sorted.map((track, idx) => {
+            const position = sorted.length > 1 ? idx / (sorted.length - 1) : 0.5;
+            const weight = Math.pow(bias < 0.5 ? (1 - position) : position, 2 + Math.abs(bias - 0.5) * 6);
+            return { track, weight: weight + Math.random() * 0.1 };
+          });
+          weighted.sort((a, b) => b.weight - a.weight);
+          artistSelected = weighted.slice(0, quota).map((w) => w.track);
+          if (artistSelected.length < quota) {
+            const shuffledUndated = undated.sort(() => Math.random() - 0.5);
+            artistSelected.push(...shuffledUndated.slice(0, quota - artistSelected.length));
+          }
         }
+
+        selected.push(...artistSelected);
+        allocated += artistSelected.length;
       }
+
+      // Final shuffle to mix artists together
+      selected = selected.sort(() => Math.random() - 0.5);
 
       const trackUris = selected.map((t) => t.uri);
 
@@ -238,26 +304,72 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           </div>
         </div>
 
-        {/* Selected artists chips */}
+        {/* Selected artists with weights */}
         {selectedArtists.size > 0 && (
           <div>
-            <label className="text-sm text-[#B3B3B3] mb-2 block">
-              Selected ({selectedArtists.size})
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {Array.from(selectedArtists.entries()).map(([id, name]) => (
-                <span
-                  key={id}
-                  className="px-3 py-1 bg-[#1DB954]/20 text-[#1DB954] rounded-full text-sm flex items-center gap-1"
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-[#B3B3B3]">
+                Selected ({selectedArtists.size})
+              </label>
+              {hasCustomWeights ? (
+                <button
+                  onClick={() => setArtistWeights(new Map())}
+                  className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                 >
-                  {name}
+                  Reset to equal
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const w = new Map<string, number>();
+                    const equal = Math.round(100 / selectedArtists.size);
+                    Array.from(selectedArtists.keys()).forEach((id) => w.set(id, equal));
+                    setArtistWeights(w);
+                  }}
+                  className="text-xs text-[#1DB954] hover:text-[#1ED760]"
+                >
+                  Customize %
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              {Array.from(selectedArtists.entries()).map(([id, name]) => (
+                <div
+                  key={id}
+                  className="flex items-center gap-2 px-3 py-2 bg-[#181818] rounded-xl"
+                >
+                  <span className="text-sm text-white flex-1 truncate">{name}</span>
+                  {hasCustomWeights && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setWeight(id, (artistWeights.get(id) || 0) - 5)}
+                        className="w-6 h-6 rounded-full bg-[#282828] text-[#B3B3B3] hover:bg-[#333333] text-xs flex items-center justify-center"
+                      >
+                        −
+                      </button>
+                      <span className="text-xs text-[#1DB954] w-8 text-center font-medium">
+                        {displayPercentages.get(id) || 0}%
+                      </span>
+                      <button
+                        onClick={() => setWeight(id, (artistWeights.get(id) || 0) + 5)}
+                        className="w-6 h-6 rounded-full bg-[#282828] text-[#B3B3B3] hover:bg-[#333333] text-xs flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                  {!hasCustomWeights && (
+                    <span className="text-xs text-[#535353]">
+                      {displayPercentages.get(id) || 0}%
+                    </span>
+                  )}
                   <button
                     onClick={() => toggleArtist({ id, name } as Artist)}
-                    className="text-[#1DB954] hover:text-white ml-1"
+                    className="text-[#B3B3B3] hover:text-red-400 ml-1"
                   >
                     ×
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { spotifyService } from '../services/spotify';
 import { getAccessTokenForUser } from './auth';
-import { parseArtistIdsFromDescription, selectRandomTracks } from '@brewtify/shared';
+import { parseArtistIdsFromDescription, parseWeightsFromDescription, selectRandomTracks } from '@brewtify/shared';
 
 export const spotifyRoutes = Router();
 
@@ -152,6 +152,7 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
       return;
     }
 
+    const weights = parseWeightsFromDescription(playlist.description || '');
     const targetCount = playlist.tracks?.total || 60;
 
     // Gather tracks from all artists
@@ -167,7 +168,7 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
       }
     });
 
-    const selected = selectRandomTracks(artistsTracks, targetCount);
+    const selected = selectRandomTracks(artistsTracks, targetCount, weights);
     const uris = selected.map((t) => t.uri);
 
     await spotifyService.replacePlaylistTracks(token, playlistId, uris);
