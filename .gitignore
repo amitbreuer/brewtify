@@ -10,3 +10,5 @@ node_modules/
 .turbo/
 .cache/
 .data/
+projects/api/src/generated/
+projects/api/.env

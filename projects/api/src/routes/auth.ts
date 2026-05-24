@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { spotifyService } from '../services/spotify';
-import { tokenStore } from '../services/token-store';
+import { tokenStore } from '../services/token-store-db';
 import { pendingAuthStore } from '../bot';
 
 export const authRoutes = Router();
@@ -28,7 +28,7 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
   try {
     const tokens = await spotifyService.exchangeCode(code as string);
 
-    tokenStore.set(telegramUserId, {
+    await tokenStore.set(telegramUserId, {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt: Date.now() + (tokens.expires_in * 1000),
@@ -45,7 +45,7 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
 
 // Helper: get a valid access token for a Telegram user, refreshing if needed
 export async function getAccessTokenForUser(telegramUserId: string): Promise<string | null> {
-  const stored = tokenStore.get(telegramUserId);
+  const stored = await tokenStore.get(telegramUserId);
   if (!stored) return null;
 
   const isExpired = Date.now() >= (stored.expiresAt - 60000);
@@ -53,14 +53,14 @@ export async function getAccessTokenForUser(telegramUserId: string): Promise<str
   if (isExpired) {
     try {
       const tokens = await spotifyService.refreshAccessToken(stored.refreshToken);
-      tokenStore.set(telegramUserId, {
+      await tokenStore.set(telegramUserId, {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || stored.refreshToken,
         expiresAt: Date.now() + (tokens.expires_in * 1000),
       });
       return tokens.access_token;
     } catch {
-      tokenStore.delete(telegramUserId);
+      await tokenStore.delete(telegramUserId);
       return null;
     }
   }

@@ -2,11 +2,16 @@ import dotenv from 'dotenv';
 import { env } from './utils/env';
 import { createServer } from './server';
 import { createBot } from './bot';
+import { prisma } from './services/db';
 
 dotenv.config({ path: ['.env.local', '.env'] });
 
 (async function main() {
   try {
+    // Verify database connection
+    await prisma.$connect();
+    console.log('🗄️  Database connected');
+
     const port = env('PORT', 5173);
     const app = createServer();
 
@@ -22,3 +27,10 @@ dotenv.config({ path: ['.env.local', '.env'] });
     process.exit(1);
   }
 })();
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('Shutting down...');
+  await prisma.$disconnect();
+  process.exit(0);
+});

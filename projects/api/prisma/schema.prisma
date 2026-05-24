@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                    Int       @id @default(autoincrement())
+  telegramUserId        String    @unique @map("telegram_user_id")
+  spotifyUserId         String?   @map("spotify_user_id")
+  encryptedAccessToken  String?   @map("encrypted_access_token")
+  encryptedRefreshToken String?   @map("encrypted_refresh_token")
+  tokenExpiresAt        BigInt?   @map("token_expires_at")
+  encryptionSalt        String    @map("encryption_salt")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  playlists   Playlist[]
+  preferences UserPreferences?
+
+  @@map("users")
+}
+
+model Playlist {
+  id                String    @id @default(cuid())
+  userId            Int       @map("user_id")
+  spotifyPlaylistId String    @map("spotify_playlist_id")
+  name              String?
+  artistIds         String[]  @map("artist_ids")
+  trackCount        Int       @default(50) @map("track_count")
+
+  // Schedule fields (null schedule = no auto-update)
+  schedule          String?                // 'daily', 'weekly:0' (sun) .. 'weekly:6' (sat)
+  nextUpdateAt      DateTime?  @map("next_update_at")
+  lastUpdatedAt     DateTime?  @map("last_updated_at")
+  status            String     @default("active")  // active, paused, failed, auth_expired
+  failureCount      Int        @default(0) @map("failure_count")
+  lastError         String?    @map("last_error")
+
+  createdAt         DateTime   @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, spotifyPlaylistId])
+  @@index([nextUpdateAt], map: "idx_due_updates")
+  @@map("playlists")
+}
+
+model UserPreferences {
+  id                  Int       @id @default(autoincrement())
+  userId              Int       @unique @map("user_id")
+  preferredGenres     String[]  @map("preferred_genres")
+  preferredMoods      String[]  @map("preferred_moods")
+  favoriteArtistIds   String[]  @map("favorite_artist_ids")
+  maxTracksPerArtist  Int       @default(5) @map("max_tracks_per_artist")
+  excludeExplicit     Boolean   @default(false) @map("exclude_explicit")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
