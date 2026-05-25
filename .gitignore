@@ -12,3 +12,4 @@ node_modules/
 .data/
 projects/api/src/generated/
 projects/api/.env
+dist/

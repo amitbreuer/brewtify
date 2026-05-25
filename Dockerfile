@@ -1,0 +1,54 @@
+# Stage 1: Build
+FROM node:22-slim AS builder
+
+WORKDIR /app
+
+# Copy workspace root files
+COPY package.json package-lock.json tsconfig.json ./
+COPY projects/api/package.json projects/api/tsconfig.json ./projects/api/
+COPY projects/api/prisma ./projects/api/prisma/
+COPY projects/api/prisma.config.ts ./projects/api/prisma.config.ts
+COPY projects/shared/package.json projects/shared/tsconfig.json ./projects/shared/
+COPY projects/shared/src ./projects/shared/src/
+
+# Install all dependencies (including devDependencies for build)
+RUN npm ci --workspace=projects/api --workspace=projects/shared --include-workspace-root
+
+# Build shared package
+WORKDIR /app/projects/shared
+RUN npx tsc
+
+# Generate Prisma client
+WORKDIR /app/projects/api
+RUN npx prisma generate
+
+# Copy source and build
+COPY projects/api/src ./src/
+RUN npx tsc
+
+# Stage 2: Production
+FROM node:22-slim AS runner
+
+WORKDIR /app
+
+# Copy workspace root files
+COPY package.json package-lock.json ./
+COPY projects/api/package.json ./projects/api/
+COPY projects/shared/package.json ./projects/shared/
+COPY --from=builder /app/projects/shared/dist ./projects/shared/dist/
+
+# Install production dependencies only
+RUN npm ci --workspace=projects/api --workspace=projects/shared --include-workspace-root --omit=dev
+
+# Copy built output (includes generated Prisma client in dist/generated/)
+COPY --from=builder /app/projects/api/dist ./projects/api/dist/
+COPY --from=builder /app/projects/api/prisma ./projects/api/prisma/
+
+WORKDIR /app/projects/api
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]

@@ -157,11 +157,11 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
 
     // Gather tracks from all artists
     const results = await Promise.allSettled(
-      artistIds.map((id) => spotifyService.getAllArtistTracks(token, id))
+      artistIds.map((id: string) => spotifyService.getAllArtistTracks(token, id))
     );
 
     const artistsTracks = new Map<string, any[]>();
-    artistIds.forEach((id, index) => {
+    artistIds.forEach((id: string, index: number) => {
       const result = results[index];
       if (result.status === 'fulfilled') {
         artistsTracks.set(id, result.value);
@@ -169,7 +169,7 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
     });
 
     const selected = selectRandomTracks(artistsTracks, targetCount, weights);
-    const uris = selected.map((t) => t.uri);
+    const uris = selected.map((t: any) => t.uri);
 
     await spotifyService.replacePlaylistTracks(token, playlistId, uris);
 
