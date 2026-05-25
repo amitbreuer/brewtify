@@ -1,8 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "types": ["vite/client"] // Required to access import.meta and Vite features
-  },
-  "include": ["src"]
-}
