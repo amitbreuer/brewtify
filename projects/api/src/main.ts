@@ -1,11 +1,11 @@
 import dotenv from 'dotenv';
+dotenv.config({ path: ['.env.local', '.env'] });
+
 import { env } from './utils/env';
 import { createServer } from './server';
 import { createBot } from './bot';
 import { prisma } from './services/db';
 import { startScheduler } from './services/scheduler';
-
-dotenv.config({ path: ['.env.local', '.env'] });
 
 (async function main() {
   try {

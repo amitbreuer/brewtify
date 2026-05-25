@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
@@ -20,6 +21,13 @@ export function createServer() {
   app.use(healthRoutes);
   app.use(authRoutes);
   app.use(spotifyRoutes);
+
+  // Serve Telegram Mini App static files
+  const miniAppPath = path.join(__dirname, '../../mini-app/dist');
+  app.use('/app', express.static(miniAppPath));
+  app.get('/app/{*splat}', (_req, res) => {
+    res.sendFile(path.join(miniAppPath, 'index.html'));
+  });
 
   return app;
 }

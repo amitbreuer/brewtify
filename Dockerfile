@@ -10,13 +10,21 @@ COPY projects/api/prisma ./projects/api/prisma/
 COPY projects/api/prisma.config.ts ./projects/api/prisma.config.ts
 COPY projects/shared/package.json projects/shared/tsconfig.json ./projects/shared/
 COPY projects/shared/src ./projects/shared/src/
+COPY projects/mini-app/package.json projects/mini-app/tsconfig.json projects/mini-app/tsconfig.app.json projects/mini-app/tsconfig.node.json ./projects/mini-app/
+COPY projects/mini-app/index.html projects/mini-app/vite.config.ts ./projects/mini-app/
+COPY projects/mini-app/src ./projects/mini-app/src/
+COPY projects/mini-app/public ./projects/mini-app/public/
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci --workspace=projects/api --workspace=projects/shared --include-workspace-root
+RUN npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/mini-app --include-workspace-root
 
 # Build shared package
 WORKDIR /app/projects/shared
 RUN npx tsc
+
+# Build mini-app
+WORKDIR /app/projects/mini-app
+RUN npm run build
 
 # Generate Prisma client
 WORKDIR /app/projects/api
@@ -43,6 +51,7 @@ RUN npm ci --workspace=projects/api --workspace=projects/shared --include-worksp
 # Copy built output (includes generated Prisma client in dist/generated/)
 COPY --from=builder /app/projects/api/dist ./projects/api/dist/
 COPY --from=builder /app/projects/api/prisma ./projects/api/prisma/
+COPY --from=builder /app/projects/mini-app/dist ./projects/mini-app/dist/
 
 WORKDIR /app/projects/api
 
