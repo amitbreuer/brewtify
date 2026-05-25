@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { spotifyService } from '../services/spotify';
 import { tokenStore } from '../services/token-store-db';
-import { pendingAuthStore } from '../bot';
+import { pendingAuthStore } from '../services/pending-auth-store';
 
 export const authRoutes = Router();
 
@@ -19,7 +19,7 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  const telegramUserId = pendingAuthStore.get(state as string);
+  const telegramUserId = await pendingAuthStore.get(state as string);
   if (!telegramUserId) {
     res.status(400).send('Invalid or expired authorization state. Please run /login again.');
     return;
@@ -34,7 +34,7 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
       expiresAt: Date.now() + (tokens.expires_in * 1000),
     });
 
-    pendingAuthStore.delete(state as string);
+    await pendingAuthStore.delete(state as string);
 
     res.send('<h1>✅ Logged in!</h1><p>You can close this window and return to Telegram.</p>');
   } catch (err: any) {

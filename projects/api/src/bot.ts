@@ -3,9 +3,7 @@ import crypto from 'crypto';
 import { env } from './utils/env';
 import { spotifyService } from './services/spotify';
 import { getAccessTokenForUser } from './routes/auth';
-
-// Temporary store: state → telegramUserId (expires after 10 minutes)
-export const pendingAuthStore = new Map<string, string>();
+import { pendingAuthStore } from './services/pending-auth-store';
 
 export function createBot() {
   const token = env('TELEGRAM_BOT_TOKEN');
@@ -40,10 +38,7 @@ export function createBot() {
     }
 
     const state = crypto.randomBytes(16).toString('hex');
-    pendingAuthStore.set(state, telegramUserId);
-
-    // Auto-expire after 10 minutes
-    setTimeout(() => pendingAuthStore.delete(state), 10 * 60 * 1000);
+    await pendingAuthStore.set(state, telegramUserId);
 
     const authUrl = spotifyService.getAuthUrl(state);
     await ctx.reply(`🔗 Click the link below to connect your Spotify account:\n\n${authUrl}`);

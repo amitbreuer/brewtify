@@ -1,12 +1,9 @@
 import { env } from '../utils/env';
 import { SpotifyTokens, UserProfile, Playlist, Artist, Track, Album } from '../types/spotify';
-import { cacheService } from './cache';
+import { redisCacheService, TTL } from './redis-cache';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
-
-// Cache TTLs
-const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 2 months in milliseconds
 
 export class SpotifyService {
   private clientId!: string;
@@ -207,25 +204,19 @@ export class SpotifyService {
     limit: number = 20,
     offset: number = 0
   ): Promise<{ items: Album[]; total: number; limit: number; offset: number; next: string | null }> {
-    // Check cache first (2 month TTL)
     const cacheKey = `artist-albums:${artistId}:${limit}:${offset}`;
-    const cached = await cacheService.get<{ items: Album[]; total: number; limit: number; offset: number; next: string | null }>(
-      cacheKey,
-      TWO_MONTHS_MS
-    );
+    const cached = await redisCacheService.get<{ items: Album[]; total: number; limit: number; offset: number; next: string | null }>(cacheKey);
 
     if (cached) {
       return cached;
     }
 
-    // Fetch from API
     const result = await this.makeRequest<any>(
       `/artists/${artistId}/albums?limit=${limit}&offset=${offset}&include_groups=album,single,appears_on`,
       accessToken
     );
 
-    // Store in cache
-    await cacheService.set(cacheKey, result, TWO_MONTHS_MS);
+    await redisCacheService.set(cacheKey, result, TTL.ARTIST_ALBUMS);
 
     return result;
   }
@@ -236,22 +227,19 @@ export class SpotifyService {
     limit: number = 30,
     offset: number = 0
   ): Promise<{ items: Track[]; total: number; limit: number; offset: number; next: string | null }> {
-    // Check cache first (no TTL - permanent cache)
     const cacheKey = `album-tracks:${albumId}:${limit}:${offset}`;
-    const cached = await cacheService.get<{ items: Track[]; total: number; limit: number; offset: number; next: string | null }>(cacheKey);
+    const cached = await redisCacheService.get<{ items: Track[]; total: number; limit: number; offset: number; next: string | null }>(cacheKey);
 
     if (cached) {
       return cached;
     }
 
-    // Fetch from API
     const result = await this.makeRequest<any>(
       `/albums/${albumId}/tracks?limit=${limit}&offset=${offset}`,
       accessToken
     );
 
-    // Store in cache (no TTL)
-    await cacheService.set(cacheKey, result);
+    await redisCacheService.set(cacheKey, result, TTL.ALBUM_TRACKS);
 
     return result;
   }
