@@ -1,6 +1,6 @@
 import type { UserProfile, Playlist, Artist, Track } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:5173';
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 function getTelegramUserId(): string | null {
   try {
@@ -27,7 +27,9 @@ async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`API error ${response.status}: ${text}`);
+    const error = new Error(`API error ${response.status}: ${text}`);
+    (error as any).status = response.status;
+    throw error;
   }
 
   return await response.json();

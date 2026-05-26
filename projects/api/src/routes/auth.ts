@@ -1,9 +1,25 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { spotifyService } from '../services/spotify';
 import { tokenStore } from '../services/token-store-db';
 import { pendingAuthStore } from '../services/pending-auth-store';
 
 export const authRoutes = Router();
+
+// Mini-app login — redirects to Spotify OAuth directly
+authRoutes.get('/login', async (req: Request, res: Response) => {
+  const telegramUserId = req.query.telegramUserId as string;
+
+  if (!telegramUserId) {
+    res.status(400).send('Missing telegramUserId parameter');
+    return;
+  }
+
+  const state = crypto.randomUUID();
+  await pendingAuthStore.set(state, telegramUserId);
+  const authUrl = spotifyService.getAuthUrl(state);
+  res.redirect(authUrl);
+});
 
 // Spotify OAuth callback — exchanges code for tokens and stores them for the Telegram user
 authRoutes.get('/callback', async (req: Request, res: Response) => {
@@ -19,7 +35,7 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  const telegramUserId = await pendingAuthStore.get(state as string);
+  const telegramUserId = String(await pendingAuthStore.get(state as string) || '');
   if (!telegramUserId) {
     res.status(400).send('Invalid or expired authorization state. Please run /login again.');
     return;

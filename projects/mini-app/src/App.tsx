@@ -1,13 +1,27 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Profile } from './components/Profile';
 import { PlaylistList } from './components/PlaylistList';
 import { CreatePlaylist } from './components/CreatePlaylist';
 import { PlaylistDetail } from './components/PlaylistDetail';
+import { LoginScreen } from './components/LoginScreen';
+import { fetchProfile } from './lib/api';
 
 export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [view, setView] = useState<'home' | 'create' | 'detail'>('home');
+  const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail'>('loading');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchProfile()
+      .then(() => setView('home'))
+      .catch((err) => {
+        if ((err as any).status === 401) {
+          setView('login');
+        } else {
+          setView('home'); // show home, Profile component will display error
+        }
+      });
+  }, []);
 
   const onProfileLoaded = useCallback(() => {}, []);
 
@@ -20,6 +34,18 @@ export default function App() {
     setSelectedPlaylistId(playlistId);
     setView('detail');
   };
+
+  if (view === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
+        <div className="text-[#B3B3B3]">Loading...</div>
+      </div>
+    );
+  }
+
+  if (view === 'login') {
+    return <LoginScreen />;
+  }
 
   if (view === 'create') {
     return <CreatePlaylist onCreated={handlePlaylistCreated} onBack={() => setView('home')} />;

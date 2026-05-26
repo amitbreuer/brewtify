@@ -20,9 +20,14 @@ import { startScheduler } from './services/scheduler';
       console.log(`🚀 Server listening on http://0.0.0.0:${port}`);
     });
 
-    const bot = createBot();
-    await bot.start();
-    console.log('🤖 Telegram bot started (long polling)');
+    // Bot startup is non-fatal — allows local dev while Fly.io is polling
+    try {
+      const bot = createBot();
+      await bot.start();
+      console.log('🤖 Telegram bot started (long polling)');
+    } catch (botErr) {
+      console.warn('⚠️  Telegram bot failed to start (another instance may be polling):', (botErr as Error).message);
+    }
 
     // Start scheduled playlist updates (daily at 00:00 UTC)
     startScheduler();
