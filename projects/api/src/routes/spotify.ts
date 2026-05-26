@@ -340,7 +340,7 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
   try {
     const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
     const spotifyPlaylistId = param(req, 'playlistId');
-    const { artistIds, trackCount, weights, eraPreference } = req.body;
+    const { artistIds, trackCount, weights, eraPreference, schedule } = req.body;
 
     const user = await prisma.user.findUnique({ where: { telegramUserId } });
     if (!user) {
@@ -367,6 +367,7 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
     if (trackCount !== undefined) updateData.trackCount = Math.min(Math.max(trackCount, 20), 200);
     if (weights !== undefined) updateData.weights = weights;
     if (eraPreference !== undefined) updateData.eraPreference = Math.min(Math.max(eraPreference, 0), 100);
+    if (schedule !== undefined) updateData.schedule = schedule;
 
     await prisma.playlist.update({
       where: { id: dbPlaylist.id },

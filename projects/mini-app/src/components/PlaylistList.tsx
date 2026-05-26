@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
-import { RefreshIcon, MusicIcon, MinusIcon } from './Icons';
+import { RefreshIcon, MusicIcon, MinusIcon, SearchIcon } from './Icons';
 import { useToast } from '../hooks/useToast';
+import logoImg from '../assets/brewtify-logo.jpg';
 
 interface ConfirmDialog {
   title: string;
@@ -22,6 +23,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<ConfirmDialog | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
 
   const loadPlaylists = async () => {
@@ -83,6 +85,10 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
     });
   };
 
+  const filteredPlaylists = playlists.filter((p) =>
+    !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   if (loading) {
     return <div className="p-4 text-[#B3B3B3] text-center">Loading playlists...</div>;
   }
@@ -93,11 +99,24 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
 
   return (
     <div className="flex flex-col gap-2 p-4">
-      <h2 className="text-lg font-semibold text-white mb-2">Your Playlists</h2>
-      {playlists.length === 0 ? (
-        <p className="text-[#B3B3B3]">No playlists found.</p>
+      {/* Search bar */}
+      <div className="relative mb-2">
+        <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#535353]" />
+        <input
+          type="text"
+          placeholder="Search playlists..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2.5 bg-[#282828] border border-[#535353] rounded-xl text-white text-sm placeholder-[#535353] focus:outline-none focus:border-[#1DB954]"
+        />
+      </div>
+
+      {filteredPlaylists.length === 0 ? (
+        <p className="text-[#B3B3B3] text-center py-4">
+          {searchQuery ? 'No playlists match your search.' : 'No playlists found.'}
+        </p>
       ) : (
-        playlists.map((playlist) => (
+        filteredPlaylists.map((playlist) => (
           <div
             key={playlist.id}
             onClick={() => onPlaylistClick(playlist.id)}
@@ -115,24 +134,26 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="text-white font-medium truncate">{playlist.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-white font-medium truncate">{playlist.name}</span>
+                {hasAutoUpdate(playlist) && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleUpdate(playlist.id); }}
+                    disabled={updatingId === playlist.id}
+                    className="text-[#B3B3B3] hover:text-[#1DB954] disabled:opacity-50 shrink-0"
+                    title="Refresh playlist"
+                  >
+                    {updatingId === playlist.id ? (
+                      <RefreshIcon size={14} className="animate-spin" />
+                    ) : (
+                      <RefreshIcon size={14} />
+                    )}
+                  </button>
+                )}
+              </div>
               <div className="text-xs text-[#B3B3B3]">{playlist.tracks.total} tracks</div>
             </div>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-              {hasAutoUpdate(playlist) && (
-                <button
-                  onClick={() => handleUpdate(playlist.id)}
-                  disabled={updatingId === playlist.id}
-                  className="p-2 text-[#B3B3B3] hover:text-white hover:bg-[#282828] rounded disabled:opacity-50"
-                  title="Refresh playlist"
-                >
-                  {updatingId === playlist.id ? (
-                    <RefreshIcon size={16} className="animate-spin" />
-                  ) : (
-                    <RefreshIcon size={16} />
-                  )}
-                </button>
-              )}
               <button
                 onClick={() => handleDelete(playlist)}
                 className="p-2 text-[#B3B3B3] hover:text-red-400 hover:bg-[#282828] rounded"

@@ -107,7 +107,7 @@ export async function fetchPlaylistSettings(playlistId: string): Promise<Playlis
 
 export async function updatePlaylistSettings(
   playlistId: string,
-  settings: { artistIds?: string[]; trackCount?: number; weights?: Record<string, number> | null; eraPreference?: number }
+  settings: { artistIds?: string[]; trackCount?: number; weights?: Record<string, number> | null; eraPreference?: number; schedule?: string | null }
 ): Promise<void> {
   await fetchAPI(`/api/playlists/${playlistId}/settings`, {
     method: 'PATCH',

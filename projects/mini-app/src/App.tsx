@@ -4,6 +4,7 @@ import { PlaylistList } from './components/PlaylistList';
 import { CreatePlaylist } from './components/CreatePlaylist';
 import { PlaylistDetail } from './components/PlaylistDetail';
 import { LoginScreen } from './components/LoginScreen';
+import { PlusIcon } from './components/Icons';
 import { fetchProfile } from './lib/api';
 
 export default function App() {
@@ -70,11 +71,12 @@ export default function App() {
         <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} />
       </main>
 
+      {/* Floating create button */}
       <button
         onClick={() => setView('create')}
-        className="fixed bottom-6 left-4 right-4 py-4 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-lg shadow-lg"
+        className="fixed bottom-6 right-5 w-14 h-14 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full shadow-lg flex items-center justify-center"
       >
-        Create Playlist
+        <PlusIcon size={28} />
       </button>
     </div>
   );

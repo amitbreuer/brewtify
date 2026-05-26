@@ -73,7 +73,18 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const setWeight = (artistId: string, weight: number) => {
     setArtistWeights((prev) => {
       const next = new Map(prev);
-      next.set(artistId, Math.max(0, Math.min(100, weight)));
+      const clampedWeight = Math.max(0, Math.min(100, weight));
+      
+      // Calculate sum excluding the current artist
+      const othersSum = Array.from(selectedArtists)
+        .filter(id => id !== artistId)
+        .reduce((sum, id) => sum + (prev.get(id) || 0), 0);
+      
+      // Ensure total doesn't exceed 100
+      const maxAllowed = 100 - othersSum;
+      const finalWeight = Math.min(clampedWeight, maxAllowed);
+      
+      next.set(artistId, finalWeight);
       return next;
     });
   };
@@ -105,6 +116,17 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
 
   const hasCustomWeights = artistWeights.size > 0;
   const displayPercentages = getDisplayPercentages();
+
+  // Validation: check if total weights = 100%
+  const getTotalWeight = (): number => {
+    if (!hasCustomWeights || selectedArtists.size === 0) return 100;
+    return Array.from(selectedArtists.keys()).reduce(
+      (sum, id) => sum + (artistWeights.get(id) || 0),
+      0
+    );
+  };
+  const totalWeight = getTotalWeight();
+  const isWeightValid = !hasCustomWeights || totalWeight === 100;
 
   const toggleGenre = (genre: string) => {
     setSelectedGenres((prev) => {
@@ -336,6 +358,12 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                 </button>
               )}
             </div>
+            {hasCustomWeights && (
+              <div className={`text-xs text-center mt-2 ${isWeightValid ? 'text-[#1DB954]' : 'text-red-400'}`}>
+                Total: {totalWeight}%
+                {!isWeightValid && ' - Must equal 100%'}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               {Array.from(selectedArtists.entries()).map(([id, name]) => (
                 <div
@@ -351,9 +379,14 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                       >
                         −
                       </button>
-                      <span className="text-xs text-[#1DB954] w-8 text-center font-medium">
-                        {displayPercentages.get(id) || 0}%
-                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={artistWeights.get(id) || Math.round(100 / selectedArtists.size)}
+                        onChange={(e) => setWeight(id, Number(e.target.value) || 0)}
+                        className="w-10 text-center text-xs text-[#1DB954] font-medium bg-transparent border-b border-[#535353] focus:border-[#1DB954] focus:outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
                       <button
                         onClick={() => setWeight(id, (artistWeights.get(id) || 0) + 5)}
                         className="w-6 h-6 rounded-full bg-[#282828] text-[#B3B3B3] hover:bg-[#333333] text-xs flex items-center justify-center"
@@ -378,6 +411,9 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
             </div>
           </div>
         )}
+
+        {/* Artists section header */}
+        <h2 className="text-sm font-semibold text-white mt-1">Your Followed Artists</h2>
 
         {/* Search + Filter row */}
         <div className="flex gap-2">
@@ -491,7 +527,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828]">
         <button
           onClick={handleCreate}
-          disabled={creating || !playlistName || selectedArtists.size === 0}
+          disabled={creating || !playlistName || selectedArtists.size === 0 || !isWeightValid}
           className="w-full py-4 bg-[#1DB954] hover:bg-[#1ED760] disabled:bg-[#282828] disabled:text-[#535353] text-black font-bold rounded-full text-lg"
         >
           {creating ? 'Creating...' : `Create (${selectedArtists.size} artists, ${songCount} tracks)`}
