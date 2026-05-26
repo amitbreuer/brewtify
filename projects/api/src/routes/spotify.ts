@@ -155,18 +155,16 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
     const weights = parseWeightsFromDescription(playlist.description || '');
     const targetCount = playlist.tracks?.total || 60;
 
-    // Gather tracks from all artists
-    const results = await Promise.allSettled(
-      artistIds.map((id: string) => spotifyService.getAllArtistTracks(token, id))
-    );
-
+    // Gather tracks from all artists (processed through the rate-limited queue)
     const artistsTracks = new Map<string, any[]>();
-    artistIds.forEach((id: string, index: number) => {
-      const result = results[index];
-      if (result.status === 'fulfilled') {
-        artistsTracks.set(id, result.value);
+    for (const id of artistIds) {
+      try {
+        const tracks = await spotifyService.getAllArtistTracks(token, id);
+        artistsTracks.set(id, tracks);
+      } catch (err) {
+        console.warn(`[update-playlist] Failed to fetch tracks for artist ${id}:`, err);
       }
-    });
+    }
 
     const selected = selectRandomTracks(artistsTracks, targetCount, weights);
     const uris = selected.map((t: any) => t.uri);

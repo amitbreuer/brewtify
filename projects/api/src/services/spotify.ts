@@ -1,9 +1,14 @@
 import { env } from '../utils/env';
 import { SpotifyTokens, UserProfile, Playlist, Artist, Track, Album } from '../types/spotify';
 import { redisCacheService, TTL } from './redis-cache';
+import PQueue from 'p-queue';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
+
+const MAX_RETRIES = 3;
+// Concurrency-limited queue for Spotify API calls
+const spotifyQueue = new PQueue({ concurrency: 5, interval: 1000, intervalCap: 10 });
 
 export class SpotifyService {
   private clientId!: string;
@@ -120,21 +125,31 @@ export class SpotifyService {
   }
 
   // API Methods
-  private async makeRequest<T>(endpoint: string, accessToken: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+  private async makeRequest<T>(endpoint: string, accessToken: string, options: RequestInit = {}, retryCount = 0): Promise<T> {
+    return spotifyQueue.add(async () => {
+      const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`Spotify API error: ${response.statusText}`);
-    }
+      // Retry with backoff on rate limit (429)
+      if (response.status === 429 && retryCount < MAX_RETRIES) {
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '1', 10);
+        console.warn(`[SpotifyService] Rate limited. Retrying after ${retryAfter}s (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        return this.makeRequest<T>(endpoint, accessToken, options, retryCount + 1);
+      }
 
-    return await response.json();
+      if (!response.ok) {
+        throw new Error(`Spotify API error: ${response.status} ${response.statusText} (${endpoint})`);
+      }
+
+      return await response.json() as T;
+    }) as T;
   }
 
   async getProfile(accessToken: string): Promise<UserProfile> {
@@ -249,30 +264,28 @@ export class SpotifyService {
 
     // Step 1: Fetch 20 albums for the artist
     const albumsResponse = await this.getArtistAlbums(accessToken, artistId, 20, 0);
+    const albumIds = albumsResponse.items.map(a => a.id);
 
-    // Step 2: Fetch tracks for all albums in parallel (30 tracks per album)
-    const albumTracksPromises = albumsResponse.items.map(async (album) => {
-      const tracksResponse = await this.getAlbumTracks(accessToken, album.id, 30, 0);
-      // Attach album release_date to each track
-      return tracksResponse.items.map((track) => ({
-        ...track,
-        album: { ...track.album, release_date: album.release_date },
-      }));
-    });
-
-    const results = await Promise.allSettled(albumTracksPromises);
-
-    // Step 3: Collect all tracks, deduplicate, and filter to only include
-    // tracks where this artist is credited
+    // Step 2: Use batch album endpoint (up to 20 per request, includes tracks)
     const allTracks: Track[] = [];
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        for (const track of result.value) {
+    const albumChunks: string[][] = [];
+    for (let i = 0; i < albumIds.length; i += 20) {
+      albumChunks.push(albumIds.slice(i, i + 20));
+    }
+
+    for (const chunk of albumChunks) {
+      const albums = await this.getAlbumsBatch(accessToken, chunk);
+      for (const album of albums) {
+        const tracks = album.tracks?.items || [];
+        for (const track of tracks) {
           if (!seenTrackIds.has(track.id)) {
             const hasArtist = track.artists?.some((a: any) => a.id === artistId);
             if (hasArtist) {
               seenTrackIds.add(track.id);
-              allTracks.push(track);
+              allTracks.push({
+                ...track,
+                album: { ...track.album, release_date: album.release_date },
+              });
             }
           }
         }
@@ -280,6 +293,41 @@ export class SpotifyService {
     }
 
     return allTracks;
+  }
+
+  /**
+   * Batch fetch up to 20 albums in a single request (includes first 50 tracks per album).
+   * Uses cache for each album individually to maximize cache hits.
+   */
+  private async getAlbumsBatch(accessToken: string, albumIds: string[]): Promise<any[]> {
+    const results: any[] = [];
+    const uncachedIds: string[] = [];
+
+    // Check cache first for each album
+    for (const id of albumIds) {
+      const cached = await redisCacheService.get<any>(`album-full:${id}`);
+      if (cached) {
+        results.push(cached);
+      } else {
+        uncachedIds.push(id);
+      }
+    }
+
+    // Fetch uncached albums in one batch call
+    if (uncachedIds.length > 0) {
+      const data = await this.makeRequest<{ albums: any[] }>(
+        `/albums?ids=${uncachedIds.join(',')}`,
+        accessToken
+      );
+      for (const album of data.albums) {
+        if (album) {
+          await redisCacheService.set(`album-full:${album.id}`, album, TTL.ALBUM_TRACKS);
+          results.push(album);
+        }
+      }
+    }
+
+    return results;
   }
 
   async createPlaylist(
