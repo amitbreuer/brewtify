@@ -21,6 +21,7 @@ export interface Playlist {
   tracks: { total: number };
   external_urls: { spotify: string };
   owner: { display_name: string };
+  managed?: boolean;
 }
 
 export interface Artist {

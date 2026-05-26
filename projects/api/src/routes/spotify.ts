@@ -1,16 +1,18 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { spotifyService } from '../services/spotify';
 import { getAccessTokenForUser } from './auth';
-import { parseArtistIdsFromDescription, parseWeightsFromDescription, selectRandomTracks } from '@brewtify/shared';
+import { selectRandomTracks } from '@brewtify/shared';
+import { prisma } from '../services/db';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('spotify-routes');
 
 export const spotifyRoutes = Router();
 
-// Extend Request to carry the Spotify token
+// Extend Request to carry the Spotify token and user context
 interface AuthenticatedRequest extends Request {
   spotifyToken: string;
+  telegramUserId: string;
 }
 
 /** Extract a single route parameter as string (Express 5 types params as string | string[]) */
@@ -35,6 +37,7 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   (req as AuthenticatedRequest).spotifyToken = accessToken;
+  (req as AuthenticatedRequest).telegramUserId = telegramUserId;
   next();
 }
 
@@ -57,6 +60,22 @@ spotifyRoutes.get('/api/playlists', async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 50);
     const data = await spotifyService.getPlaylists((req as AuthenticatedRequest).spotifyToken, limit);
+
+    // Enrich with managed flag from DB
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+    if (telegramUserId && data.items) {
+      const user = await prisma.user.findUnique({ where: { telegramUserId } });
+      if (user) {
+        const spotifyIds = data.items.map((p: any) => p.id);
+        const managed = await prisma.playlist.findMany({
+          where: { userId: user.id, spotifyPlaylistId: { in: spotifyIds } },
+          select: { spotifyPlaylistId: true },
+        });
+        const managedSet = new Set(managed.map((m) => m.spotifyPlaylistId));
+        data.items = data.items.map((p: any) => ({ ...p, managed: managedSet.has(p.id) }));
+      }
+    }
+
     res.json(data);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -130,10 +149,10 @@ spotifyRoutes.get('/api/artists/:artistId/tracks', async (req: Request, res: Res
   }
 });
 
-// POST /api/playlists — create a new playlist
+// POST /api/playlists — create a new playlist and save settings to DB
 spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
   try {
-    const { userId, name, description } = req.body;
+    const { userId, name, description, artistIds, trackCount, weights, eraPreference } = req.body;
     if (!userId || !name) {
       res.status(400).json({ error: 'userId and name are required' });
       return;
@@ -142,13 +161,41 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Playlist name must be 100 characters or less' });
       return;
     }
-    const playlist = await spotifyService.createPlaylist(
-      (req as AuthenticatedRequest).spotifyToken,
-      userId,
-      name,
-      description || ''
-    );
-    log.info('Playlist created', { playlistId: playlist.id, name });
+    if (!artistIds || !Array.isArray(artistIds) || artistIds.length === 0) {
+      res.status(400).json({ error: 'artistIds must be a non-empty array' });
+      return;
+    }
+
+    const token = (req as AuthenticatedRequest).spotifyToken;
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+
+    const playlist = await spotifyService.createPlaylist(token, userId, name, description || '');
+
+    // Save playlist settings to database
+    const user = await prisma.user.findUnique({ where: { telegramUserId } });
+    if (user) {
+      await prisma.playlist.upsert({
+        where: { userId_spotifyPlaylistId: { userId: user.id, spotifyPlaylistId: playlist.id } },
+        create: {
+          userId: user.id,
+          spotifyPlaylistId: playlist.id,
+          name,
+          artistIds,
+          trackCount: trackCount || 100,
+          weights: weights || null,
+          eraPreference: eraPreference ?? 50,
+        },
+        update: {
+          name,
+          artistIds,
+          trackCount: trackCount || 100,
+          weights: weights || null,
+          eraPreference: eraPreference ?? 50,
+        },
+      });
+    }
+
+    log.info('Playlist created', { playlistId: playlist.id, name, artistCount: artistIds.length });
     res.json(playlist);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -183,23 +230,34 @@ spotifyRoutes.post('/api/playlists/:playlistId/tracks', async (req: Request, res
   }
 });
 
-// POST /api/playlists/:playlistId/update — refresh a playlist with auto-update
+// POST /api/playlists/:playlistId/update — refresh a playlist with randomized tracks
 spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res: Response) => {
   try {
     const token = (req as AuthenticatedRequest).spotifyToken;
-    const playlistId = param(req, 'playlistId');
-    const playlist = await spotifyService.getPlaylist(token, playlistId);
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+    const spotifyPlaylistId = param(req, 'playlistId');
 
-    const artistIds = parseArtistIdsFromDescription(playlist.description || '');
-    if (artistIds.length === 0) {
-      res.status(400).json({ error: 'No auto-update artist IDs found in playlist description' });
+    // Read playlist settings from database
+    const user = await prisma.user.findUnique({ where: { telegramUserId } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
       return;
     }
 
-    const weights = parseWeightsFromDescription(playlist.description || '');
-    const targetCount = playlist.tracks?.total || 60;
+    const dbPlaylist = await prisma.playlist.findFirst({
+      where: { userId: user.id, spotifyPlaylistId },
+    });
+    if (!dbPlaylist || dbPlaylist.artistIds.length === 0) {
+      res.status(400).json({ error: 'Playlist not found in database or has no configured artists' });
+      return;
+    }
 
-    log.info('Updating playlist', { playlistId, artistCount: artistIds.length, targetCount });
+    const { artistIds, trackCount, weights: weightsJson } = dbPlaylist;
+    const weights = weightsJson
+      ? new Map<string, number>(Object.entries(weightsJson as Record<string, number>))
+      : undefined;
+
+    log.info('Updating playlist', { spotifyPlaylistId, artistCount: artistIds.length, trackCount });
 
     // Gather tracks from all artists (processed through the rate-limited queue)
     const artistsTracks = new Map<string, any[]>();
@@ -213,12 +271,12 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
       }
     }
 
-    const selected = selectRandomTracks(artistsTracks, targetCount, weights);
+    const selected = selectRandomTracks(artistsTracks, trackCount, weights);
     const uris = selected.map((t: any) => t.uri);
 
-    await spotifyService.replacePlaylistTracks(token, playlistId, uris);
+    await spotifyService.replacePlaylistTracks(token, spotifyPlaylistId, uris);
 
-    log.info('Playlist updated successfully', { playlistId, trackCount: uris.length });
+    log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: uris.length });
     res.json({ success: true, trackCount: uris.length, artistCount: artistIds.length });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -240,23 +298,86 @@ spotifyRoutes.delete('/api/playlists/:playlistId', async (req: Request, res: Res
   }
 });
 
-// PATCH /api/playlists/:playlistId/description
-spotifyRoutes.patch('/api/playlists/:playlistId/description', async (req: Request, res: Response) => {
+// GET /api/playlists/:playlistId/settings — get playlist settings from DB
+spotifyRoutes.get('/api/playlists/:playlistId/settings', async (req: Request, res: Response) => {
   try {
-    const { description } = req.body;
-    if (typeof description !== 'string') {
-      res.status(400).json({ error: 'description must be a string' });
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+    const spotifyPlaylistId = param(req, 'playlistId');
+
+    const user = await prisma.user.findUnique({ where: { telegramUserId } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
       return;
     }
-    await spotifyService.updatePlaylistDetails(
-      (req as AuthenticatedRequest).spotifyToken,
-      param(req, 'playlistId'),
-      { description }
-    );
+
+    const dbPlaylist = await prisma.playlist.findFirst({
+      where: { userId: user.id, spotifyPlaylistId },
+    });
+    if (!dbPlaylist) {
+      res.json({ managed: false });
+      return;
+    }
+
+    res.json({
+      managed: true,
+      artistIds: dbPlaylist.artistIds,
+      trackCount: dbPlaylist.trackCount,
+      weights: dbPlaylist.weights,
+      eraPreference: dbPlaylist.eraPreference,
+      schedule: dbPlaylist.schedule,
+      status: dbPlaylist.status,
+      lastUpdatedAt: dbPlaylist.lastUpdatedAt,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to fetch playlist settings', { playlistId: param(req, 'playlistId'), error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// PATCH /api/playlists/:playlistId/settings — update playlist settings in DB
+spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, res: Response) => {
+  try {
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+    const spotifyPlaylistId = param(req, 'playlistId');
+    const { artistIds, trackCount, weights, eraPreference } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { telegramUserId } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const dbPlaylist = await prisma.playlist.findFirst({
+      where: { userId: user.id, spotifyPlaylistId },
+    });
+    if (!dbPlaylist) {
+      res.status(404).json({ error: 'Playlist not managed by Brewtify' });
+      return;
+    }
+
+    const updateData: any = {};
+    if (artistIds !== undefined) {
+      if (!Array.isArray(artistIds) || artistIds.length === 0) {
+        res.status(400).json({ error: 'artistIds must be a non-empty array' });
+        return;
+      }
+      updateData.artistIds = artistIds;
+    }
+    if (trackCount !== undefined) updateData.trackCount = Math.min(Math.max(trackCount, 20), 200);
+    if (weights !== undefined) updateData.weights = weights;
+    if (eraPreference !== undefined) updateData.eraPreference = Math.min(Math.max(eraPreference, 0), 100);
+
+    await prisma.playlist.update({
+      where: { id: dbPlaylist.id },
+      data: updateData,
+    });
+
+    log.info('Playlist settings updated', { spotifyPlaylistId });
     res.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    log.error('Failed to update playlist description', { playlistId: param(req, 'playlistId'), error: message });
+    log.error('Failed to update playlist settings', { playlistId: param(req, 'playlistId'), error: message });
     res.status(500).json({ error: message });
   }
 });

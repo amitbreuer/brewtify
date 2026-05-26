@@ -31,6 +31,8 @@ model Playlist {
   name              String?
   artistIds         String[]  @map("artist_ids")
   trackCount        Int       @default(50) @map("track_count")
+  weights           Json?                  // { "artistId": percentage } or null for equal
+  eraPreference     Int       @default(50) @map("era_preference") // 0=old, 100=new, 50=mixed
 
   // Schedule fields (null schedule = no auto-update)
   schedule          String?                // 'daily', 'weekly:0' (sun) .. 'weekly:6' (sat)

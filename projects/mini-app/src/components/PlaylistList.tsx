@@ -41,7 +41,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   }, []);
 
   const hasAutoUpdate = (playlist: Playlist) =>
-    playlist.description?.includes('[Auto-update:');
+    playlist.managed === true;
 
   const handleUpdate = (playlistId: string) => {
     const playlist = playlists.find((p) => p.id === playlistId);

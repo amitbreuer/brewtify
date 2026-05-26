@@ -56,14 +56,20 @@ export async function fetchAllArtistTracks(artistId: string): Promise<Track[]> {
   return fetchAPI<Track[]>(`/api/artists/${artistId}/tracks`);
 }
 
-export async function createPlaylist(
-  userId: string,
-  name: string,
-  description: string
-): Promise<Playlist> {
+export interface CreatePlaylistParams {
+  userId: string;
+  name: string;
+  description?: string;
+  artistIds: string[];
+  trackCount: number;
+  weights?: Record<string, number>;
+  eraPreference?: number;
+}
+
+export async function createPlaylist(params: CreatePlaylistParams): Promise<Playlist> {
   return fetchAPI<Playlist>('/api/playlists', {
     method: 'POST',
-    body: JSON.stringify({ userId, name, description }),
+    body: JSON.stringify(params),
   });
 }
 
@@ -84,10 +90,28 @@ export async function deletePlaylist(playlistId: string): Promise<void> {
   await fetchAPI(`/api/playlists/${playlistId}`, { method: 'DELETE' });
 }
 
-export async function updatePlaylistDescription(playlistId: string, description: string): Promise<void> {
-  await fetchAPI(`/api/playlists/${playlistId}/description`, {
+export interface PlaylistSettings {
+  managed: boolean;
+  artistIds?: string[];
+  trackCount?: number;
+  weights?: Record<string, number> | null;
+  eraPreference?: number;
+  schedule?: string | null;
+  status?: string;
+  lastUpdatedAt?: string | null;
+}
+
+export async function fetchPlaylistSettings(playlistId: string): Promise<PlaylistSettings> {
+  return fetchAPI<PlaylistSettings>(`/api/playlists/${playlistId}/settings`);
+}
+
+export async function updatePlaylistSettings(
+  playlistId: string,
+  settings: { artistIds?: string[]; trackCount?: number; weights?: Record<string, number> | null; eraPreference?: number }
+): Promise<void> {
+  await fetchAPI(`/api/playlists/${playlistId}/settings`, {
     method: 'PATCH',
-    body: JSON.stringify({ description }),
+    body: JSON.stringify(settings),
   });
 }
 

@@ -148,20 +148,23 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
     try {
       const profile: UserProfile = await fetchProfile();
       const artistIds = Array.from(selectedArtists.keys());
-      // Encode artist IDs with weights if custom weights are set
-      let artistIdsEncoded: string;
+
+      // Build weights object if custom weights are set
+      let weights: Record<string, number> | undefined;
       if (hasCustomWeights) {
         const percentages = getDisplayPercentages();
-        artistIdsEncoded = artistIds.map((id) => `${id}:${percentages.get(id) || 0}`).join(',');
-      } else {
-        artistIdsEncoded = artistIds.join(',');
+        weights = {};
+        artistIds.forEach((id) => { weights![id] = percentages.get(id) || 0; });
       }
-      let description = `[Auto-update: ${artistIdsEncoded}`;
-      if (eraPreference !== 50) description += `|era=${eraPreference}`;
-      if (songCount !== 100) description += `|count=${songCount}`;
-      description += ']';
 
-      const playlist = await createPlaylist(profile.id, playlistName, description);
+      const playlist = await createPlaylist({
+        userId: profile.id,
+        name: playlistName,
+        artistIds,
+        trackCount: songCount,
+        weights,
+        eraPreference,
+      });
       setStatus(`Gathering tracks from ${artistIds.length} artists...`);
 
       const results = await Promise.allSettled(

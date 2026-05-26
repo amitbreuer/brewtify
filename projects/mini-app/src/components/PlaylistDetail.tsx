@@ -5,7 +5,8 @@ import {
   fetchArtistsByIds,
   fetchFollowedArtists,
   updatePlaylist,
-  updatePlaylistDescription,
+  fetchPlaylistSettings,
+  updatePlaylistSettings,
 } from '../lib/api';
 import { MusicIcon, MicIcon, MinusIcon, CheckIcon } from './Icons';
 
@@ -19,68 +20,6 @@ interface PlaylistSettings {
   weights: Map<string, number>;
   era: number;
   count: number;
-  disabled: boolean;
-}
-
-function parseSettings(description: string): PlaylistSettings {
-  const match = description.match(/\[Auto-update:\s*([^\]]+)\]/);
-  if (!match) return { artistIds: [], weights: new Map(), era: 50, count: 100, disabled: false };
-
-  const parts = match[1].split('|');
-  const artistParts = parts[0].split(',').map((s) => s.trim()).filter(Boolean);
-
-  const artistIds: string[] = [];
-  const weights = new Map<string, number>();
-  let hasWeights = false;
-
-  for (const part of artistParts) {
-    const [id, weightStr] = part.split(':');
-    artistIds.push(id.trim());
-    if (weightStr) {
-      weights.set(id.trim(), parseInt(weightStr) || 0);
-      hasWeights = true;
-    }
-  }
-
-  // If no explicit weights, leave the map empty (means equal distribution)
-  if (!hasWeights) weights.clear();
-
-  let era = 50;
-  let count = 100;
-  let disabled = false;
-
-  for (const part of parts.slice(1)) {
-    if (part.trim() === 'disabled') {
-      disabled = true;
-      continue;
-    }
-    const [key, val] = part.split('=');
-    if (key === 'era') era = parseInt(val) || 50;
-    if (key === 'count') count = parseInt(val) || 100;
-  }
-
-  return { artistIds, weights, era, count, disabled };
-}
-
-function encodeSettings(settings: PlaylistSettings): string {
-  let artistsEncoded: string;
-  if (settings.weights.size > 0) {
-    // Normalize weights before encoding
-    const totalWeight = Array.from(settings.weights.values()).reduce((s, w) => s + w, 0) || 1;
-    artistsEncoded = settings.artistIds.map((id) => {
-      const w = settings.weights.get(id) || 0;
-      const pct = Math.round((w / totalWeight) * 100);
-      return `${id}:${pct}`;
-    }).join(',');
-  } else {
-    artistsEncoded = settings.artistIds.join(',');
-  }
-  let desc = `[Auto-update: ${artistsEncoded}`;
-  if (settings.era !== 50) desc += `|era=${settings.era}`;
-  if (settings.count !== 100) desc += `|count=${settings.count}`;
-  if (settings.disabled) desc += `|disabled`;
-  desc += ']';
-  return desc;
 }
 
 const TRACK_OPTIONS = [60, 80, 100, 120, 140];
@@ -88,7 +27,7 @@ const TRACK_OPTIONS = [60, 80, 100, 120, 140];
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100, disabled: false });
+  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100 });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,12 +43,26 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     try {
       const pl = await fetchPlaylist(playlistId);
       setPlaylist(pl);
-      const parsed = parseSettings(pl.description || '');
-      setSettings(parsed);
 
-      if (parsed.artistIds.length > 0) {
-        const artistData = await fetchArtistsByIds(parsed.artistIds);
-        setArtists(artistData);
+      // Load settings from DB
+      const dbSettings = await fetchPlaylistSettings(playlistId);
+      if (dbSettings.managed && dbSettings.artistIds) {
+        const weights = new Map<string, number>();
+        if (dbSettings.weights) {
+          Object.entries(dbSettings.weights).forEach(([id, w]) => weights.set(id, w as number));
+        }
+        const parsed: PlaylistSettings = {
+          artistIds: dbSettings.artistIds,
+          weights,
+          era: dbSettings.eraPreference ?? 50,
+          count: dbSettings.trackCount ?? 100,
+        };
+        setSettings(parsed);
+
+        if (parsed.artistIds.length > 0) {
+          const artistData = await fetchArtistsByIds(parsed.artistIds);
+          setArtists(artistData);
+        }
       }
     } catch (err: any) {
       setStatus(`❌ ${err.message}`);
@@ -221,8 +174,15 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     setSaving(true);
     setStatus('Saving settings...');
     try {
-      const description = encodeSettings(settings);
-      await updatePlaylistDescription(playlistId, description);
+      const weightsObj = settings.weights.size > 0
+        ? Object.fromEntries(settings.weights)
+        : null;
+      await updatePlaylistSettings(playlistId, {
+        artistIds: settings.artistIds,
+        trackCount: settings.count,
+        weights: weightsObj,
+        eraPreference: settings.era,
+      });
       setDirty(false);
       setEditMode(false);
       setStatus('✅ Settings saved!');
@@ -238,8 +198,15 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     setSaving(true);
     setStatus('Saving & refreshing...');
     try {
-      const description = encodeSettings(settings);
-      await updatePlaylistDescription(playlistId, description);
+      const weightsObj = settings.weights.size > 0
+        ? Object.fromEntries(settings.weights)
+        : null;
+      await updatePlaylistSettings(playlistId, {
+        artistIds: settings.artistIds,
+        trackCount: settings.count,
+        weights: weightsObj,
+        eraPreference: settings.era,
+      });
       setDirty(false);
       setEditMode(false);
       setStatus('Refreshing playlist...');
@@ -335,35 +302,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     Edit
                   </button>
                 )}
-              </div>
-
-              {/* Auto-refresh toggle */}
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-[#B3B3B3]">Auto-refresh</label>
-                <button
-                  onClick={async () => {
-                    const newSettings = { ...settings, disabled: !settings.disabled };
-                    setSettings(newSettings);
-                    // Save immediately (no need for edit mode)
-                    try {
-                      const desc = encodeSettings(newSettings);
-                      await updatePlaylistDescription(playlistId, desc);
-                      setStatus('');
-                    } catch (err: any) {
-                      setSettings(settings); // revert
-                      setStatus(`❌ ${err.message}`);
-                    }
-                  }}
-                  className={`relative inline-flex items-center w-10 h-[22px] rounded-full transition-colors shrink-0 ${
-                    !settings.disabled ? 'bg-[#1DB954]' : 'bg-[#535353]'
-                  }`}
-                >
-                  <span
-                    className={`inline-block w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      !settings.disabled ? 'translate-x-[22px]' : 'translate-x-[3px]'
-                    }`}
-                  />
-                </button>
               </div>
 
               {/* Track count */}

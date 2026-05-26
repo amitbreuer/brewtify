@@ -36,7 +36,7 @@ Brewtify is a Spotify playlist management service — a "Playlists Brewery" — 
 | Backend | Express 5, grammY, TypeScript | API server + Telegram bot |
 | Database | Neon PostgreSQL + Prisma ORM | Users, playlists, schedules |
 | Cache | Upstash Redis (HTTP-based) | Spotify data caching (albums, tracks, auth state) |
-| Shared Logic | @brewtify/shared | Track selection algorithm, description parsing |
+| Shared Logic | @brewtify/shared | Track selection algorithm |
 | Deployment | Fly.io (Docker), GitHub Actions | Always-on VM, CI/CD |
 | Rate Limiting | p-queue (concurrency + interval) | Spotify API rate limit compliance |
 | Logging | Structured JSON logger | Observability (request tracing, error reporting) |
@@ -133,11 +133,7 @@ Mini App (CreatePlaylist.tsx)          Backend (spotify routes)         SpotifyS
  │◄── success ──────────────────────────────┤◄──────────────────────────────┤                        │                    │
 ```
 
-**Description encoding:** The playlist description embeds metadata for auto-update:
-```
-[Auto-update: artistId1,artistId2:50%,artistId3|era=75|count=100]
-```
-This encodes: which artists, their weight percentages, era preference, and target track count.
+**Settings storage:** All playlist settings (artist IDs, weights, era preference, track count) are stored in the PostgreSQL database. There is no encoding in the Spotify playlist description — settings are managed entirely server-side.
 
 **Era weighting:** The frontend applies a sigmoid-based weighting to each track's `release_date`. An era value of 0 = prefer older music, 100 = prefer newer music, 50 = no preference.
 
@@ -151,7 +147,7 @@ This encodes: which artists, their weight percentages, era preference, and targe
 
 ### 3. Playlist Refresh (Manual)
 
-**User action:** In the Mini App playlist list, user taps the 🔄 button on a playlist that has `[Auto-update: ...]` in its description.
+**User action:** In the Mini App playlist list, user taps the 🔄 button on a managed playlist (indicated by the `managed` flag from the backend).
 
 **Complete flow:**
 
@@ -160,13 +156,10 @@ Mini App (PlaylistList.tsx)        Backend (POST /playlists/:id/update)      Spo
  │                                      │                                        │                        │
  │── [Confirm dialog] ────────────►     │                                        │                        │
  │── updatePlaylist(playlistId) ───────►│                                        │                        │
- │                                      │── getPlaylist(token, id) ──────────────►│── GET /playlists/{id} ─►│
- │                                      │◄── playlist with description ──────────┤◄────────────────────────┤
- │                                      │                                        │                        │
- │                                      │── parseArtistIdsFromDescription()      │                        │
- │                                      │   → extracts [id1, id2, id3]          │                        │
- │                                      │── parseWeightsFromDescription()        │                        │
- │                                      │   → extracts {id2: 50}               │                        │
+ │                                      │── prisma.user.findUnique(telegramUserId) ─► Database             │
+ │                                      │◄── user ─────────────────────────────────                       │
+ │                                      │── prisma.playlist.findFirst(userId, spotifyPlaylistId) ─► Database
+ │                                      │◄── dbPlaylist (artistIds, weights, trackCount, eraPreference)    │
  │                                      │                                        │                        │
  │                                      │── for each artist (sequential):        │                        │
  │                                      │   getAllArtistTracks(token, artistId) ─►│                        │
@@ -189,7 +182,7 @@ Mini App (PlaylistList.tsx)        Backend (POST /playlists/:id/update)      Spo
 - Artists are processed sequentially (not parallel) to stay within rate limits
 - If one artist fails, the others still proceed (logged as warning, not fatal)
 - `selectRandomTracks()` uses Fisher-Yates shuffle and respects per-artist weight percentages
-- Target track count defaults to the playlist's current total if not encoded
+- Target track count is read from the DB (defaults to 100 if not set)
 
 ---
 
@@ -364,7 +357,7 @@ The core integration layer with Spotify's Web API. All external Spotify calls fl
 |--------|-----------------|-------|-------|
 | `getProfile()` | GET /me | None | User identity |
 | `getPlaylists()` | GET /me/playlists | None | Always fresh |
-| `getPlaylist()` | GET /playlists/{id} | None | Need current description |
+| `getPlaylist()` | GET /playlists/{id} | None | Read playlist metadata |
 | `getFollowedArtists()` | GET /me/following | 5 min | Reduces repeat loads |
 | `getArtistAlbums()` | GET /artists/{id}/albums | 60 days | Albums rarely change |
 | `getAlbumsBatch()` | GET /albums?ids=... | 6 months | Tracks never change |
@@ -417,8 +410,6 @@ Published as `@brewtify/shared`, used by both the API and the scheduler.
 **Exports:**
 | Function | Purpose |
 |----------|---------|
-| `parseArtistIdsFromDescription(desc)` | Extracts artist IDs from `[Auto-update: id1,id2,id3]` format |
-| `parseWeightsFromDescription(desc)` | Extracts per-artist weight percentages |
 | `selectRandomTracks(artistsTracks, count, weights)` | Fisher-Yates shuffle with weighted artist selection |
 
 ---
