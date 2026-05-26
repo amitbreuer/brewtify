@@ -175,6 +175,14 @@ export class SpotifyService {
     limit: number = 50,
     after?: string
   ): Promise<{ items: Artist[]; next: string | null; total: number }> {
+    const tokenHash = accessToken.slice(-16);
+    const cacheKey = `followed-artists:${tokenHash}:${limit}:${after || ''}`;
+    const cached = await redisCacheService.get<{ items: Artist[]; next: string | null; total: number }>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const params = new URLSearchParams({
       type: 'artist',
       limit: limit.toString(),
@@ -189,11 +197,15 @@ export class SpotifyService {
     const { artists } = response;
     const { items, cursors, total = 0 } = artists || {};
 
-    return {
+    const result = {
       items: items || [],
       next: cursors?.after || null,
       total,
     };
+
+    await redisCacheService.set(cacheKey, result, TTL.FOLLOWED_ARTISTS);
+
+    return result;
   }
 
   async getArtists(accessToken: string, ids: string[]): Promise<Artist[]> {

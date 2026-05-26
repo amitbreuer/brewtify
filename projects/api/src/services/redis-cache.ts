@@ -5,6 +5,7 @@ import { env } from '../utils/env';
 export const TTL = {
   ARTIST_ALBUMS: 60 * 60 * 24 * 60, // 2 months
   ALBUM_TRACKS: 60 * 60 * 24 * 180, // 6 months (effectively permanent)
+  FOLLOWED_ARTISTS: 60 * 5,         // 5 minutes
   PLAYLIST_META: 60 * 60,            // 1 hour
   PENDING_AUTH: 60 * 10,             // 10 minutes
 } as const;
