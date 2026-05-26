@@ -3,7 +3,6 @@ import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
 import { RefreshIcon, MusicIcon, MinusIcon, SearchIcon } from './Icons';
 import { useToast } from '../hooks/useToast';
-import logoImg from '../assets/brewtify-logo.jpg';
 
 interface ConfirmDialog {
   title: string;

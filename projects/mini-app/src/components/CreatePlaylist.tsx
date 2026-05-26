@@ -76,7 +76,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       const clampedWeight = Math.max(0, Math.min(100, weight));
       
       // Calculate sum excluding the current artist
-      const othersSum = Array.from(selectedArtists)
+      const othersSum = Array.from(selectedArtists.keys())
         .filter(id => id !== artistId)
         .reduce((sum, id) => sum + (prev.get(id) || 0), 0);
       
