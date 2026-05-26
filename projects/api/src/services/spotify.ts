@@ -1,7 +1,10 @@
 import { env } from '../utils/env';
 import { SpotifyTokens, UserProfile, Playlist, Artist, Track, Album } from '../types/spotify';
 import { redisCacheService, TTL } from './redis-cache';
+import { createLogger } from '../utils/logger';
 import PQueue from 'p-queue';
+
+const log = createLogger('spotify-service');
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS_BASE = 'https://accounts.spotify.com';
@@ -74,28 +77,6 @@ export class SpotifyService {
     return await response.json();
   }
 
-  // OAuth Methods
-  async exchangeCodeForTokens(code: string, codeVerifier: string): Promise<SpotifyTokens> {
-    this.initialize();
-    const params = new URLSearchParams();
-    params.append('client_id', this.clientId);
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('redirect_uri', this.redirectUri);
-    params.append('code_verifier', codeVerifier);
-
-    const response = await fetch(`${SPOTIFY_ACCOUNTS_BASE}/api/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to exchange code for tokens');
-    }
-
-    return await response.json();
-  }
 
   async refreshAccessToken(refreshToken: string): Promise<SpotifyTokens> {
     this.initialize();
@@ -139,7 +120,7 @@ export class SpotifyService {
       // Retry with backoff on rate limit (429)
       if (response.status === 429 && retryCount < MAX_RETRIES) {
         const retryAfter = parseInt(response.headers.get('Retry-After') || '1', 10);
-        console.warn(`[SpotifyService] Rate limited. Retrying after ${retryAfter}s (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        log.warn(`Rate limited, retrying after ${retryAfter}s`, { endpoint, attempt: retryCount + 1, maxRetries: MAX_RETRIES });
         await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
         return this.makeRequest<T>(endpoint, accessToken, options, retryCount + 1);
       }
@@ -367,7 +348,7 @@ export class SpotifyService {
     playlistId: string,
     trackUris: string[]
   ): Promise<void> {
-    console.log(`[SpotifyService] addTracksToPlaylist called with ${trackUris.length} tracks`);
+    log.debug('addTracksToPlaylist called', { playlistId, trackCount: trackUris.length });
 
     // Spotify API allows max 100 tracks per request
     const chunks = [];
@@ -375,10 +356,7 @@ export class SpotifyService {
       chunks.push(trackUris.slice(i, i + 100));
     }
 
-    console.log(`[SpotifyService] Split into ${chunks.length} chunks`);
-
     for (const chunk of chunks) {
-      console.log(`[SpotifyService] Adding chunk of ${chunk.length} tracks to playlist ${playlistId}`);
       await this.makeRequest<any>(
         `/playlists/${playlistId}/tracks`,
         accessToken,
@@ -387,10 +365,9 @@ export class SpotifyService {
           body: JSON.stringify({ uris: chunk }),
         }
       );
-      console.log(`[SpotifyService] Chunk added successfully`);
     }
 
-    console.log(`[SpotifyService] All tracks added successfully`);
+    log.info('Tracks added to playlist', { playlistId, totalTracks: trackUris.length, chunks: chunks.length });
   }
 
   async replacePlaylistTracks(

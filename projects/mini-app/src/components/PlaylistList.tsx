@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
 import { RefreshIcon, MusicIcon, MinusIcon } from './Icons';
+import { useToast } from '../hooks/useToast';
 
 interface ConfirmDialog {
   title: string;
@@ -21,6 +22,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<ConfirmDialog | null>(null);
+  const { showToast } = useToast();
 
   const loadPlaylists = async () => {
     setLoading(true);
@@ -55,7 +57,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
           await updatePlaylist(playlistId);
           await loadPlaylists();
         } catch (err: any) {
-          alert(`Update failed: ${err.message}`);
+          showToast(`Update failed: ${err.message}`);
         } finally {
           setUpdatingId(null);
         }
@@ -75,7 +77,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
           await deletePlaylist(playlist.id);
           await loadPlaylists();
         } catch (err: any) {
-          alert(`Delete failed: ${err.message}`);
+          showToast(`Delete failed: ${err.message}`);
         }
       },
     });

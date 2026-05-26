@@ -1,5 +1,8 @@
 import { prisma } from './db';
 import { encrypt, decrypt, generateSalt } from './encryption';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('token-store');
 
 export interface StoredTokens {
   accessToken: string;
@@ -30,7 +33,7 @@ export class TokenStore {
         expiresAt: Number(user.tokenExpiresAt),
       };
     } catch (err) {
-      console.error(`Failed to decrypt tokens for user ${telegramUserId}:`, err);
+      log.error('Failed to decrypt tokens', { telegramUserId, error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }

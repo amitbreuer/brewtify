@@ -4,6 +4,9 @@ import { prisma } from './db';
 import { spotifyService } from './spotify';
 import { tokenStore } from './token-store-db';
 import { getAccessTokenForUser } from '../routes/auth';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('scheduler');
 
 const CONCURRENCY = 5;
 const MAX_RETRIES = 3;
@@ -15,13 +18,13 @@ const MAX_RETRIES = 3;
 export function startScheduler() {
   // Run every day at 00:00 UTC
   cron.schedule('0 0 * * *', () => {
-    console.log('[Scheduler] Midnight cron triggered');
+    log.info('Midnight cron triggered');
     processScheduledUpdates().catch((err) => {
-      console.error('[Scheduler] Unhandled error:', err);
+      log.error('Unhandled error in scheduled update', { error: err instanceof Error ? err.message : String(err) });
     });
   }, { timezone: 'UTC' });
 
-  console.log('[Scheduler] Cron job registered (daily at 00:00 UTC)');
+  log.info('Cron job registered (daily at 00:00 UTC)');
 }
 
 export async function processScheduledUpdates() {
@@ -38,11 +41,11 @@ export async function processScheduledUpdates() {
   });
 
   if (duePlaylists.length === 0) {
-    console.log('[Scheduler] No playlists due for update');
+    log.info('No playlists due for update');
     return;
   }
 
-  console.log(`[Scheduler] ${duePlaylists.length} playlist(s) due for update`);
+  log.info(`${duePlaylists.length} playlist(s) due for update`);
 
   const queue = new PQueue({ concurrency: CONCURRENCY });
 
@@ -51,7 +54,7 @@ export async function processScheduledUpdates() {
   }
 
   await queue.onIdle();
-  console.log('[Scheduler] All updates complete');
+  log.info('All updates complete');
 }
 
 async function updatePlaylist(playlist: any) {
@@ -100,9 +103,9 @@ async function updatePlaylist(playlist: any) {
       },
     });
 
-    console.log(`[Scheduler] ✅ Updated playlist ${spotifyPlaylistId} (${selectedTracks.length} tracks)`);
+    log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: selectedTracks.length });
   } catch (err: any) {
-    console.error(`[Scheduler] ❌ Failed to update playlist ${id}:`, err.message);
+    log.error('Failed to update playlist', { playlistId: id, error: err.message });
 
     const newFailureCount = playlist.failureCount + 1;
     if (newFailureCount >= MAX_RETRIES) {

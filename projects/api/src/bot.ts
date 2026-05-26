@@ -6,6 +6,9 @@ import { getAccessTokenForUser } from './routes/auth';
 import { pendingAuthStore } from './services/pending-auth-store';
 import { prisma } from './services/db';
 import { calculateNextUpdate } from './services/scheduler';
+import { createLogger } from './utils/logger';
+
+const log = createLogger('bot');
 
 export function createBot() {
   const token = env('TELEGRAM_BOT_TOKEN');
@@ -73,7 +76,7 @@ export function createBot() {
       const lines = items.map((p, i) => `${escapeMarkdown(`${i + 1}.`)} *${escapeMarkdown(p.name)}* \\— ${p.tracks.total} tracks`);
       await ctx.reply(`🎶 *Your Playlists:*\n\n${lines.join('\n')}`, { parse_mode: 'MarkdownV2' });
     } catch (err) {
-      console.error('Failed to fetch playlists:', err);
+      log.error('Failed to fetch playlists', { error: err instanceof Error ? err.message : String(err) });
       await ctx.reply('❌ Failed to fetch playlists. Try /login again.');
     }
   });
@@ -243,7 +246,7 @@ export function createBot() {
   });
 
   bot.catch((err) => {
-    console.error('Bot error:', err);
+    log.error('Unhandled bot error', { error: err instanceof Error ? err.message : String(err) });
   });
 
   return bot;
