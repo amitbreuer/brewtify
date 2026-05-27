@@ -123,3 +123,19 @@ export async function fetchPlaylist(playlistId: string): Promise<Playlist> {
 export async function fetchArtistsByIds(ids: string[]): Promise<Artist[]> {
   return fetchAPI<Artist[]>(`/api/artists?ids=${ids.join(',')}`);
 }
+
+export async function fetchAllFollowedArtists(): Promise<Artist[]> {
+  const all: Artist[] = [];
+  let after: string | undefined;
+  let hasMore = true;
+
+  while (hasMore) {
+    const data = await fetchFollowedArtists(50, after);
+    all.push(...data.items);
+    after = data.next || undefined;
+    hasMore = data.next !== null;
+  }
+
+  all.sort((a, b) => b.followers.total - a.followers.total);
+  return all;
+}

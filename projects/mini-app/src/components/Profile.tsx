@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { UserProfile } from '../lib/types';
 import { fetchProfile } from '../lib/api';
+import { LoadingState, ErrorState } from './shared';
 
 interface ProfileProps {
   onProfileLoaded: () => void;
@@ -20,11 +21,11 @@ export function Profile({ onProfileLoaded }: ProfileProps) {
   }, [onProfileLoaded]);
 
   if (error) {
-    return <div className="p-4 text-red-400 text-center">{error}</div>;
+    return <ErrorState message={error} />;
   }
 
   if (!profile) {
-    return <div className="p-4 text-[#B3B3B3] text-center">Loading profile...</div>;
+    return <LoadingState message="Loading profile..." />;
   }
 
   return (

@@ -3,14 +3,8 @@ import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
 import { RefreshIcon, MusicIcon, MinusIcon, SearchIcon } from './Icons';
 import { useToast } from '../hooks/useToast';
-
-interface ConfirmDialog {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  confirmColor?: 'green' | 'red';
-  onConfirm: () => void;
-}
+import { ConfirmDialog, LoadingState, ErrorState } from './shared';
+import type { ConfirmDialogData } from './shared';
 
 interface PlaylistListProps {
   onPlaylistClick: (playlistId: string) => void;
@@ -21,7 +15,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<ConfirmDialog | null>(null);
+  const [dialog, setDialog] = useState<ConfirmDialogData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
 
@@ -89,11 +83,11 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   );
 
   if (loading) {
-    return <div className="p-4 text-[#B3B3B3] text-center">Loading playlists...</div>;
+    return <LoadingState message="Loading playlists..." />;
   }
 
   if (error) {
-    return <div className="p-4 text-red-400 text-center">{error}</div>;
+    return <ErrorState message={error} />;
   }
 
   return (
@@ -165,30 +159,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
 
       {/* Confirm dialog */}
       {dialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-[#282828] rounded-2xl p-5 w-full max-w-xs flex flex-col gap-4">
-            <h3 className="text-white font-semibold text-base">{dialog.title}</h3>
-            <p className="text-[#B3B3B3] text-sm">{dialog.message}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDialog(null)}
-                className="flex-1 py-2.5 bg-[#181818] text-white font-medium rounded-full text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={dialog.onConfirm}
-                className={`flex-1 py-2.5 font-bold rounded-full text-sm ${
-                  dialog.confirmColor === 'red'
-                    ? 'bg-red-500 hover:bg-red-400 text-white'
-                    : 'bg-[#1DB954] hover:bg-[#1ED760] text-black'
-                }`}
-              >
-                {dialog.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog dialog={dialog} onCancel={() => setDialog(null)} />
       )}
     </div>
   );
