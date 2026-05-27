@@ -64,6 +64,7 @@ export interface CreatePlaylistParams {
   trackCount: number;
   weights?: Record<string, number>;
   eraPreference?: number;
+  schedule?: string | null;
 }
 
 export async function createPlaylist(params: CreatePlaylistParams): Promise<Playlist> {

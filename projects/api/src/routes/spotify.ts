@@ -152,7 +152,7 @@ spotifyRoutes.get('/api/artists/:artistId/tracks', async (req: Request, res: Res
 // POST /api/playlists — create a new playlist and save settings to DB
 spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
   try {
-    const { userId, name, description, artistIds, trackCount, weights, eraPreference } = req.body;
+    const { userId, name, description, artistIds, trackCount, weights, eraPreference, schedule } = req.body;
     if (!userId || !name) {
       res.status(400).json({ error: 'userId and name are required' });
       return;
@@ -184,6 +184,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           trackCount: trackCount || 100,
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
+          schedule: schedule || null,
         },
         update: {
           name,
@@ -191,6 +192,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           trackCount: trackCount || 100,
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
+          schedule: schedule || null,
         },
       });
     }

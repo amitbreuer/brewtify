@@ -15,6 +15,11 @@ interface CreatePlaylistProps {
 }
 
 const TRACK_OPTIONS = [60, 80, 100, 120, 140];
+const SCHEDULE_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null, label: 'Off' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+];
 
 export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -27,6 +32,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [playlistName, setPlaylistName] = useState('');
   const [songCount, setSongCount] = useState(100);
   const [eraPreference, setEraPreference] = useState(50); // 0=old, 100=new, 50=mixed
+  const [schedule, setSchedule] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -186,6 +192,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         trackCount: songCount,
         weights,
         eraPreference,
+        schedule,
       });
       setStatus(`Gathering tracks from ${artistIds.length} artists...`);
 
@@ -327,6 +334,26 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
             <span>Older</span>
             <span className={eraPreference === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
             <span>Newer</span>
+          </div>
+        </div>
+
+        {/* Auto-refresh schedule */}
+        <div>
+          <label className="text-sm text-[#B3B3B3] mb-2 block">Auto-refresh schedule</label>
+          <div className="flex gap-2">
+            {SCHEDULE_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => setSchedule(opt.value)}
+                className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${
+                  schedule === opt.value
+                    ? 'bg-[#1DB954] text-black'
+                    : 'bg-[#282828] text-[#B3B3B3] hover:bg-[#333333]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 

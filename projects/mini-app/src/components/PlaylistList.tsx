@@ -133,32 +133,30 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-white font-medium truncate">{playlist.name}</span>
-                {hasAutoUpdate(playlist) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleUpdate(playlist.id); }}
-                    disabled={updatingId === playlist.id}
-                    className="text-[#B3B3B3] hover:text-[#1DB954] disabled:opacity-50 shrink-0"
-                    title="Refresh playlist"
-                  >
-                    {updatingId === playlist.id ? (
-                      <RefreshIcon size={14} className="animate-spin" />
-                    ) : (
-                      <RefreshIcon size={14} />
-                    )}
-                  </button>
-                )}
-              </div>
+              <div className="text-white font-medium truncate">{playlist.name}</div>
               <div className="text-xs text-[#B3B3B3]">{playlist.tracks.total} tracks</div>
             </div>
-            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+              {hasAutoUpdate(playlist) && (
+                <button
+                  onClick={() => handleUpdate(playlist.id)}
+                  disabled={updatingId === playlist.id}
+                  className="p-2.5 text-[#B3B3B3] hover:text-[#1DB954] hover:bg-[#282828] rounded-lg disabled:opacity-50"
+                  title="Refresh playlist"
+                >
+                  {updatingId === playlist.id ? (
+                    <RefreshIcon size={20} className="animate-spin" />
+                  ) : (
+                    <RefreshIcon size={20} />
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => handleDelete(playlist)}
-                className="p-2 text-[#B3B3B3] hover:text-red-400 hover:bg-[#282828] rounded"
+                className="p-2.5 text-[#B3B3B3] hover:text-red-400 hover:bg-[#282828] rounded-lg"
                 title="Remove playlist"
               >
-                <MinusIcon size={16} />
+                <MinusIcon size={20} />
               </button>
             </div>
           </div>
