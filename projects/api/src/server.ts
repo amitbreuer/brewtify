@@ -9,8 +9,8 @@ import { env } from './utils/env';
 
 const ALLOWED_ORIGINS = [
   'https://brewtify-bot.fly.dev',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
 ];
 
 export function createServer() {

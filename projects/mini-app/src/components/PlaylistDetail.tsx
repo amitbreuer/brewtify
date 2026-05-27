@@ -134,17 +134,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const setWeight = (artistId: string, weight: number) => {
     const newWeights = new Map(settings.weights);
     const clampedWeight = Math.max(0, Math.min(100, weight));
-    
-    // Calculate sum excluding the current artist
-    const othersSum = settings.artistIds
-      .filter(id => id !== artistId)
-      .reduce((sum, id) => sum + (settings.weights.get(id) || 0), 0);
-    
-    // Ensure total doesn't exceed 100
-    const maxAllowed = 100 - othersSum;
-    const finalWeight = Math.min(clampedWeight, maxAllowed);
-    
-    newWeights.set(artistId, finalWeight);
+    newWeights.set(artistId, clampedWeight);
     setSettings({ ...settings, weights: newWeights });
     setDirty(true);
   };
@@ -173,14 +163,9 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       return result;
     }
 
-    const totalWeight = settings.artistIds.reduce(
-      (sum, id) => sum + (settings.weights.get(id) || Math.round(100 / count)),
-      0
-    );
     const result = new Map<string, number>();
     settings.artistIds.forEach((id) => {
-      const w = settings.weights.get(id) || Math.round(100 / count);
-      result.set(id, Math.round((w / totalWeight) * 100));
+      result.set(id, settings.weights.get(id) || 0);
     });
     return result;
   };
@@ -511,8 +496,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                           type="number"
                           min={0}
                           max={100}
-                          value={settings.weights.get(artist.id) || Math.round(100 / settings.artistIds.length)}
-                          onChange={(e) => setWeight(artist.id, Number(e.target.value) || 0)}
+                          value={settings.weights.has(artist.id) ? settings.weights.get(artist.id) : ''}
+                          onChange={(e) => setWeight(artist.id, e.target.value === '' ? 0 : Number(e.target.value))}
                           className="w-9 text-center text-xs text-[#1DB954] font-medium bg-transparent border-b border-[#535353] focus:border-[#1DB954] focus:outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                         <button

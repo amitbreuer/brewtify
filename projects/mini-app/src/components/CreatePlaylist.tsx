@@ -80,42 +80,26 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
     setArtistWeights((prev) => {
       const next = new Map(prev);
       const clampedWeight = Math.max(0, Math.min(100, weight));
-      
-      // Calculate sum excluding the current artist
-      const othersSum = Array.from(selectedArtists.keys())
-        .filter(id => id !== artistId)
-        .reduce((sum, id) => sum + (prev.get(id) || 0), 0);
-      
-      // Ensure total doesn't exceed 100
-      const maxAllowed = 100 - othersSum;
-      const finalWeight = Math.min(clampedWeight, maxAllowed);
-      
-      next.set(artistId, finalWeight);
+      next.set(artistId, clampedWeight);
       return next;
     });
   };
 
-  // Compute display percentages (normalized)
+  // Get raw percentages (each field is independent, no normalization)
   const getDisplayPercentages = (): Map<string, number> => {
     const count = selectedArtists.size;
     if (count === 0) return new Map();
 
     if (artistWeights.size === 0) {
-      // All equal
       const equal = Math.round(100 / count);
       const result = new Map<string, number>();
       Array.from(selectedArtists.keys()).forEach((id) => result.set(id, equal));
       return result;
     }
 
-    const totalWeight = Array.from(selectedArtists.keys()).reduce(
-      (sum, id) => sum + (artistWeights.get(id) || Math.round(100 / count)),
-      0
-    );
     const result = new Map<string, number>();
     Array.from(selectedArtists.keys()).forEach((id) => {
-      const w = artistWeights.get(id) || Math.round(100 / count);
-      result.set(id, Math.round((w / totalWeight) * 100));
+      result.set(id, artistWeights.get(id) || 0);
     });
     return result;
   };
@@ -410,8 +394,8 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
                         type="number"
                         min={0}
                         max={100}
-                        value={artistWeights.get(id) || Math.round(100 / selectedArtists.size)}
-                        onChange={(e) => setWeight(id, Number(e.target.value) || 0)}
+                        value={artistWeights.has(id) ? artistWeights.get(id) : ''}
+                        onChange={(e) => setWeight(id, e.target.value === '' ? 0 : Number(e.target.value))}
                         className="w-10 text-center text-xs text-[#1DB954] font-medium bg-transparent border-b border-[#535353] focus:border-[#1DB954] focus:outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                       <button
