@@ -8,7 +8,7 @@ import {
   fetchPlaylistSettings,
   updatePlaylistSettings,
 } from '../lib/api';
-import { MusicIcon, MicIcon, MinusIcon, CheckIcon } from './Icons';
+import { MusicIcon, MicIcon, MinusIcon, CheckIcon, RefreshIcon } from './Icons';
 
 interface PlaylistDetailProps {
   playlistId: string;
@@ -333,9 +333,19 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
               <MusicIcon size={32} />
             </div>
           )}
-          <div>
+          <div className="flex-1">
             <div className="text-[#B3B3B3] text-sm">{playlist.tracks.total} tracks</div>
           </div>
+          {isAutoUpdate && (
+            <button
+              onClick={handleRefresh}
+              disabled={updating}
+              className="p-3 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full disabled:opacity-50"
+              title="Refresh playlist"
+            >
+              <RefreshIcon size={22} className={updating ? 'animate-spin' : ''} />
+            </button>
+          )}
         </div>
 
         {!isAutoUpdate && (
@@ -601,7 +611,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                   {loadingAllArtists ? (
                     <div className="text-[#B3B3B3] text-xs text-center py-4">Loading artists...</div>
                   ) : (
-                    <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto">
+                    <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto p-1">
                       {filteredAllArtists.slice(0, 40).map((artist) => {
                         const isSelected = settings.artistIds.includes(artist.id);
                         return (
@@ -653,46 +663,34 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       )}
 
       {/* Bottom actions */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828] flex gap-2">
-        {editMode ? (
-          <>
-            <button
-              onClick={() => { setEditMode(false); setDirty(false); loadPlaylist(); }}
-              className="py-3 px-4 bg-[#282828] text-white font-medium rounded-full text-sm"
-            >
-              Cancel
-            </button>
-            {dirty && (
-              <>
-                <button
-                  onClick={handleSave}
-                  disabled={saving || updating || !isWeightValid}
-                  className="flex-1 py-3 bg-[#282828] border border-[#1DB954] text-[#1DB954] font-bold rounded-full text-sm disabled:opacity-50"
-                >
-                  {saving && !updating ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  onClick={handleSaveAndRefresh}
-                  disabled={saving || updating || !isWeightValid}
-                  className="flex-1 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-sm disabled:opacity-50"
-                >
-                  {updating ? 'Refreshing...' : 'Save & Refresh'}
-                </button>
-              </>
-            )}
-          </>
-        ) : (
-          isAutoUpdate && (
-            <button
-              onClick={handleRefresh}
-              disabled={updating}
-              className="w-full py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full disabled:opacity-50"
-            >
-              {updating ? 'Refreshing...' : 'Refresh Playlist'}
-            </button>
-          )
-        )}
-      </div>
+      {editMode && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828] flex gap-2">
+          <button
+            onClick={() => { setEditMode(false); setDirty(false); loadPlaylist(); }}
+            className="py-3 px-4 bg-[#282828] text-white font-medium rounded-full text-sm"
+          >
+            Cancel
+          </button>
+          {dirty && (
+            <>
+              <button
+                onClick={handleSave}
+                disabled={saving || updating || !isWeightValid}
+                className="flex-1 py-3 bg-[#282828] border border-[#1DB954] text-[#1DB954] font-bold rounded-full text-sm disabled:opacity-50"
+              >
+                {saving && !updating ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={handleSaveAndRefresh}
+                disabled={saving || updating || !isWeightValid}
+                className="flex-1 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-sm disabled:opacity-50"
+              >
+                {updating ? 'Refreshing...' : 'Save & Refresh'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
