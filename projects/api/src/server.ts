@@ -4,11 +4,12 @@ import cors from 'cors';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { spotifyRoutes } from './routes/spotify';
+import { cronRoutes } from './routes/cron';
 import { requestLogger } from './middleware/request-logger';
 import { env } from './utils/env';
 
 const ALLOWED_ORIGINS = [
-  'https://brewtify-bot.fly.dev',
+  'https://brewtify-133698158612.me-west1.run.app',
   'http://localhost:5174',
   'http://127.0.0.1:5174',
 ];
@@ -41,11 +42,17 @@ export function createServer() {
   app.use(healthRoutes);
   app.use(authRoutes);
   app.use(spotifyRoutes);
+  app.use(cronRoutes);
 
   // Serve Telegram Mini App static files
   const miniAppPath = path.join(__dirname, '../../mini-app/dist');
   app.use('/app', express.static(miniAppPath));
-  app.get('/app/{*splat}', (_req, res) => {
+  app.get('/app/{*splat}', (req, res) => {
+    // Only serve index.html for non-asset routes (SPA fallback)
+    if (req.path.match(/\.\w+$/)) {
+      res.status(404).end();
+      return;
+    }
     res.sendFile(path.join(miniAppPath, 'index.html'));
   });
 

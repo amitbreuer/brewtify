@@ -1,0 +1,56 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: me-west1
+  SERVICE: brewtify
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    concurrency: deploy-group
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          source: .
+          env_vars: |
+            NODE_ENV=production
+            PORT=3000
+          secrets: |
+            DATABASE_URL=DATABASE_URL:latest
+            SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest
+            SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest
+            ENCRYPTION_KEY=ENCRYPTION_KEY:latest
+            UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest
+            UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
+            TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest
+            CRON_SECRET=CRON_SECRET:latest
+          flags: |
+            --min-instances=0
+            --max-instances=2
+            --timeout=300
+            --allow-unauthenticated

@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import PQueue from 'p-queue';
 import { prisma } from './db';
 import { spotifyService } from './spotify';
@@ -9,22 +8,6 @@ const log = createLogger('scheduler');
 
 const CONCURRENCY = 5;
 const MAX_RETRIES = 3;
-
-/**
- * Scheduler service — runs a cron job at 00:00 UTC daily.
- * Queries playlists due for update and refreshes them concurrently.
- */
-export function startScheduler() {
-  // Run every day at 00:00 UTC
-  cron.schedule('0 0 * * *', () => {
-    log.info('Midnight cron triggered');
-    processScheduledUpdates().catch((err) => {
-      log.error('Unhandled error in scheduled update', { error: err instanceof Error ? err.message : String(err) });
-    });
-  }, { timezone: 'UTC' });
-
-  log.info('Cron job registered (daily at 00:00 UTC)');
-}
 
 export async function processScheduledUpdates() {
   const now = new Date();

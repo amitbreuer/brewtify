@@ -1,0 +1,12 @@
+node_modules
+dist
+.cache
+.data
+.env
+.env.local
+*.log
+.git
+.github
+projects/ui
+scripts
+docs

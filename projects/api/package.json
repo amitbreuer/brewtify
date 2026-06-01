@@ -10,7 +10,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
-    "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
     "prisma": "^7.8.0"
   },
@@ -18,7 +17,6 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@upstash/redis": "^1.38.0",
-    "node-cron": "^4.2.1",
     "p-queue": "^9.3.0",
     "pg": "^8.21.0"
   }

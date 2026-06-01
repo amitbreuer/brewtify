@@ -1,4 +1,5 @@
-import { Bot } from 'grammy';
+import { Bot, webhookCallback } from 'grammy';
+import { Express } from 'express';
 import crypto from 'crypto';
 import { env } from './utils/env';
 import { spotifyService } from './services/spotify';
@@ -9,6 +10,15 @@ import { calculateNextUpdate } from './services/scheduler';
 import { createLogger } from './utils/logger';
 
 const log = createLogger('bot');
+
+/**
+ * Set up the bot to receive updates via webhook on the Express app.
+ * This replaces long-polling and allows the service to scale to zero.
+ */
+export function setupBotWebhook(app: Express, bot: Bot) {
+  app.post('/bot/webhook', webhookCallback(bot, 'express'));
+  log.info('Bot webhook route registered at /bot/webhook');
+}
 
 export function createBot() {
   const token = env('TELEGRAM_BOT_TOKEN');
