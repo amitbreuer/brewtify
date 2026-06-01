@@ -39,11 +39,11 @@ jobs:
           source: .
           env_vars: |
             NODE_ENV=production
-            PORT=3000
           secrets: |
             DATABASE_URL=DATABASE_URL:latest
             SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest
             SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest
+            SPOTIFY_REDIRECT_URI=SPOTIFY_REDIRECT_URI:latest
             ENCRYPTION_KEY=ENCRYPTION_KEY:latest
             UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest
             UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
