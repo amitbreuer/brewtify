@@ -2,7 +2,6 @@ import cron from 'node-cron';
 import PQueue from 'p-queue';
 import { prisma } from './db';
 import { spotifyService } from './spotify';
-import { tokenStore } from './token-store-db';
 import { getAccessTokenForUser } from '../routes/auth';
 import { createLogger } from '../utils/logger';
 

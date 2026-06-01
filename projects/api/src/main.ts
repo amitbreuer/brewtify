@@ -23,17 +23,20 @@ const log = createLogger('main');
       log.info(`Server listening on http://0.0.0.0:${port}`);
     });
 
+    // Start scheduled playlist updates (daily at 00:00 UTC)
+    startScheduler();
+
     // Bot startup is non-fatal — allows local dev while Fly.io is polling
+    // bot.start() never resolves (long polling loop), so we don't await it.
     try {
       const bot = createBot();
-      await bot.start();
+      bot.start().catch((botErr) => {
+        log.warn('Telegram bot stopped', { error: (botErr as Error).message });
+      });
       log.info('Telegram bot started (long polling)');
     } catch (botErr) {
       log.warn('Telegram bot failed to start (another instance may be polling)', { error: (botErr as Error).message });
     }
-
-    // Start scheduled playlist updates (daily at 00:00 UTC)
-    startScheduler();
   } catch (err) {
     log.error('Failed to start', { error: err instanceof Error ? err.message : String(err) });
     process.exit(1);
