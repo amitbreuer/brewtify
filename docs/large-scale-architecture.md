@@ -131,9 +131,8 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 ## 4. Scheduled Updates
 
 ### What we did (solo)
-- `node-cron` running inside the single API process
-- `p-queue` with concurrency 5
-- Midnight UTC daily check
+- Cloud Scheduler → `POST /cron/update` daily at midnight UTC
+- `p-queue` with concurrency 5 inside the request handler
 
 ### At scale
 | Aspect | Solution |
@@ -211,8 +210,8 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 ## 7. Infrastructure & DevOps
 
 ### What we did (solo)
-- Single Fly.io VM (256MB RAM)
-- GitHub Actions deploy on push to main
+- Single Cloud Run service (scale-to-zero, me-west1)
+- GitHub Actions deploy on push to main (Workload Identity Federation)
 
 ### At scale
 | Aspect | Solution |
@@ -237,7 +236,7 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 
 ### What we did (solo)
 - AES-256-GCM encryption
-- HTTPS via Fly.io's automatic TLS
+- HTTPS via Cloud Run's automatic TLS
 
 ### At scale
 | Aspect | Solution |
@@ -264,7 +263,7 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 
 ### What we did (solo)
 - Console logs
-- Fly.io built-in log viewer
+- Cloud Run built-in log viewer (Cloud Logging)
 
 ### At scale
 | Aspect | Solution |
@@ -288,12 +287,12 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 
 | Component | Solo (current) | Scale (10K users) | Scale (1M users) |
 |-----------|---------------|-------------------|-------------------|
-| Compute | $0 (Fly free) | ~$200/mo (3 pods) | ~$5,000/mo (auto-scale) |
+| Compute | $0 (Cloud Run free) | ~$200/mo (3 pods) | ~$5,000/mo (auto-scale) |
 | Database | $0 (Neon free) | ~$50/mo (Aurora) | ~$1,500/mo (multi-AZ) |
 | Cache | $0 (Upstash free) | ~$50/mo (ElastiCache) | ~$500/mo (cluster) |
-| Queue/Scheduler | $0 (in-process) | ~$20/mo (SQS) | ~$100/mo (Temporal Cloud) |
-| Secrets | $0 (env var) | ~$5/mo (Vault) | ~$50/mo (KMS) |
-| Observability | $0 (logs) | ~$100/mo (Datadog) | ~$2,000/mo |
+| Queue/Scheduler | $0 (Cloud Scheduler) | ~$20/mo (SQS) | ~$100/mo (Temporal Cloud) |
+| Secrets | $0 (Secret Manager) | ~$5/mo (Vault) | ~$50/mo (KMS) |
+| Observability | $0 (Cloud Logging) | ~$100/mo (Datadog) | ~$2,000/mo |
 | **Total** | **$0** | **~$425/mo** | **~$9,150/mo** |
 
 ---
@@ -303,11 +302,11 @@ At scale, the same requirements (token encryption, playlist settings, caching, s
 | Concern | Solo | Company Scale |
 |---------|------|---------------|
 | Single point of failure | Everywhere | Eliminated (redundancy at every layer) |
-| Deployment | GitHub Actions + Fly.io | Automated CI/CD with canary + rollback |
-| Secrets | Env vars | Hardware-backed KMS with rotation |
-| Scheduling | In-process cron | Distributed workflow engine |
+| Deployment | GitHub Actions + Cloud Run | Automated CI/CD with canary + rollback |
+| Secrets | Cloud Secret Manager | Hardware-backed KMS with rotation |
+| Scheduling | Cloud Scheduler + HTTP endpoint | Distributed workflow engine |
 | Caching | Single serverless Redis | Multi-level with request coalescing |
 | Database | Single instance | Primary + replicas + connection pooling |
 | Rate limits | Per-process p-queue | Distributed token bucket + circuit breaker |
-| Monitoring | Console logs | Full observability stack with SLOs |
+| Monitoring | Cloud Logging (JSON) | Full observability stack with SLOs |
 | Security | Basic encryption | Defense in depth + compliance |
