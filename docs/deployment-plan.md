@@ -1,63 +1,71 @@
 # Brewtify Deployment Plan
 
-## Current State
+## Current State (as of June 2026)
 
-- Express server + grammY Telegram bot running locally (long polling)
-- Tokens stored as **plaintext JSON** in `.data/tokens.json` (insecure)
-- File-based caching in `.cache/` directory
-- No persistent database — all state is in-memory or flat files
-- No scheduled updates system beyond the GitHub Actions cron
+- Express server + grammY Telegram bot deployed on **Google Cloud Run** (scale-to-zero)
+- Telegram bot uses **webhook mode** (not long-polling)
+- Tokens stored as **AES-256-GCM encrypted** records in Neon PostgreSQL
+- Upstash Redis for caching (albums, tracks, auth state)
+- **Cloud Scheduler** triggers playlist updates daily at 00:00 UTC via `POST /cron/update`
+- CI/CD: GitHub Actions auto-deploys to Cloud Run on push to `main` (Workload Identity Federation)
 
 ---
 
-## Chosen Architecture: Fly.io + Neon + Upstash
+## Architecture: Cloud Run + Neon + Upstash
 
 ```
-Fly.io (free VM, always-on)
-├── Express + grammY bot (long polling)
+Google Cloud Run (scale-to-zero, me-west1)
+├── Express + grammY bot (webhook mode)
 ├── Prisma ORM → Neon PostgreSQL (users, tokens, playlists, preferences)
 ├── Upstash Redis (cached Spotify data — artists, albums, tracks)
-└── node-cron (scheduled playlist updates at 00:00 UTC)
+└── POST /cron/update (triggered by Cloud Scheduler)
 ```
 
-### Hosting: **Fly.io** (Always-On)
+### Hosting: **Google Cloud Run** (Scale-to-Zero)
 
-- 3 free VMs (shared-cpu-1x, 256MB RAM each) — bot never sleeps
-- Process runs 24/7, no cold starts, no sleep policy
-- Unlike Railway (sleeps after 5 min) or Render (sleeps after 15 min),
-  Fly.io keeps your app alive permanently
-- Deploy via `flyctl` CLI, supports Docker
+- Containers start on request, shut down when idle
+- No cold-start issues for this use case (~2s startup)
+- Free tier: 2M requests/month + 360K vCPU-seconds
+- Deploy via `gcloud run deploy --source .` (builds Dockerfile in Cloud Build)
 
 ### Database: **Neon (PostgreSQL)** — Primary Store
 
-| Aspect | PostgreSQL (Neon) | MongoDB (Atlas) |
-|--------|-------------------|-----------------|
-| Free storage | **10 GB** | 512 MB |
-| Data integrity | FK constraints, ACID | Eventual consistency |
-| Relationships | Natural (users→playlists) | Manual denormalization |
-| Schema enforcement | Strict (catches bugs) | Flexible (allows corruption) |
-| TypeScript ORM | Prisma (excellent) | Mongoose |
-
-**Stores:** encrypted user tokens, playlist settings, schedules, user preferences.
+| Aspect | Details |
+|--------|---------|
+| Free storage | 10 GB |
+| Data integrity | FK constraints, ACID |
+| ORM | Prisma |
+| Stores | Encrypted user tokens, playlist settings, schedules |
 
 ### Cache: **Upstash Redis** — Caching Layer
 
 - 10,000 commands/day free, 256 MB storage
-- Serverless Redis — no infra management
-- **Caches:** artist albums (2mo TTL), album tracks (6mo TTL), playlist metadata (1hr TTL)
+- Serverless Redis (HTTP-based) — no connection management
+- **Caches:** artist albums (2mo TTL), album tracks (6mo TTL), pending auth state (10min TTL)
 
 ---
 
-## Database Schema
+## Scheduling (Cloud Scheduler)
 
-Defined in `projects/api/prisma/schema.prisma`:
+Replaced in-process `node-cron` with Google Cloud Scheduler:
 
-**Users** — Telegram identity + encrypted Spotify tokens
-**Playlists** — Spotify playlist config + schedule fields (merged, no separate schedule table)
-**UserPreferences** — genres, moods, favorites, exclusions
-
-Schedule is a field on playlists (not a separate table) because it's 1:1 and
-always updates at 00:00 UTC — no per-user time config needed.
+```
+Cloud Scheduler (daily 00:00 UTC)
+  │
+  └─ POST /cron/update (X-Cron-Secret header)
+       │
+       ├─ Query: SELECT playlists WHERE next_update_at <= NOW()
+       │
+       ├─ For each due playlist (concurrency=5 via p-queue):
+       │   1. Decrypt user's Spotify tokens
+       │   2. Refresh if expired
+       │   3. Fetch artist tracks (Redis cache: 90%+ hit rate)
+       │   4. Shuffle & select tracks (Fisher-Yates)
+       │   5. PUT /playlists/{id}/tracks to Spotify
+       │   6. Update next_update_at, last_updated_at
+       │
+       └─ On failure: retry 3x, then mark 'failed' + store error
+```
 
 ---
 
@@ -72,130 +80,74 @@ IV = crypto.randomBytes(12) per encryption call
 Stored format: base64(iv + authTag + ciphertext)
 ```
 
-- AES-256-GCM (not bcrypt) because we need to **decrypt** tokens to use them
-- GCM provides encryption + tamper detection
-- Per-user salt + HKDF ensures identical tokens produce different ciphertext
-
----
-
-## Scheduled Updates Flow
-
-```
-00:00 UTC — node-cron fires
-  │
-  ├─ Query: SELECT playlists WHERE schedule IS NOT NULL
-  │    AND status = 'active' AND next_update_at <= NOW()
-  │
-  ├─ For each due playlist (concurrency=5 via p-queue):
-  │   1. Decrypt user's Spotify tokens
-  │   2. Refresh if expired
-  │   3. Fetch artist tracks (Redis cache: 90%+ hit rate)
-  │   4. Shuffle & select tracks (Fisher-Yates)
-  │   5. PUT /playlists/{id}/tracks to Spotify
-  │   6. Update next_update_at, last_updated_at
-  │
-  └─ On failure: retry 3x, then mark 'failed' + notify user
-```
-
-**Scaling:** Sequential handles 1–50 users. p-queue concurrency=5 handles up to ~500 users on the free VM.
-
----
-
-## Implementation Phases
-
-### Phase 1: Database & ORM Setup ✅ DONE
-- [x] Install Prisma ORM (`prisma` + `@prisma/client` + `@prisma/adapter-pg`)
-- [x] Define schema.prisma (users, playlists, user_preferences)
-- [x] Implement AES-256-GCM encryption service with HKDF per-user key derivation
-- [x] Replace file-based `TokenStore` with Prisma-backed encrypted store
-- [x] Update auth routes to use async DB token store
-- [x] Add graceful shutdown (Prisma disconnect on SIGTERM)
-- [x] Verify: TypeScript compiles clean, encryption round-trip works
-- [x] Sign up at neon.tech, set DATABASE_URL, run `prisma db push`
-- [x] Consolidated `.env` and `.env.local` into single `.env.local` (Prisma config updated to read both)
-
-### Phase 2: Redis Cache Layer ✅ DONE
-- [x] Install `@upstash/redis` (serverless, HTTP-based, no connection pooling needed)
-- [x] Create `RedisCacheService` (`src/services/redis-cache.ts`) replacing file-based `CacheService`
-- [x] Migrate cache keys: artist albums (2mo TTL), album tracks (6mo TTL)
-- [x] Move `pendingAuthStore` from in-memory Map to Redis (`src/services/pending-auth-store.ts`, 10-min TTL, survives restarts)
-- [x] Update `spotify.ts` to use `redisCacheService` instead of `cacheService`
-- [x] Update `bot.ts` and `auth.ts` to use Redis-backed `pendingAuthStore`
-- [x] Removed `setTimeout` hack — Redis handles TTL natively
-- [x] TypeScript compiles clean
-- [ ] **TODO:** Sign up at upstash.com, create Redis DB, set `UPSTASH_REDIS_URL` + `UPSTASH_REDIS_TOKEN` in `.env.local`
-
-### Phase 3: Scheduling System ✅ DONE
-- [x] Install `node-cron` + `p-queue`
-- [x] Implement scheduler service (`src/services/scheduler.ts`): midnight cron checks DB for due updates
-- [x] Playlist update flow: decrypt tokens → refresh if expired → fetch tracks (Redis cached) → shuffle → replace on Spotify → update next_update_at
-- [x] Concurrency via p-queue (5 parallel updates)
-- [x] Retry logic (3 attempts, then mark status='failed' + store error)
-- [x] `calculateNextUpdate()` handles 'daily' and 'weekly:N' schedules
-- [x] Scheduler started in `main.ts` on app boot
-- [x] Bot commands added: `/schedule <name> <daily|weekly:N>`, `/pause <name>`, `/resume <name>`, `/status`
-- [x] TypeScript compiles clean
-
-### Phase 4: User Preferences — SKIPPED (for now)
-
-### Phase 5: Dockerize & Deploy to Fly.io ✅ DONE
-- [x] Create multi-stage `Dockerfile` (Node 22-slim, build → production)
-- [x] Create `fly.toml` (shared-cpu-1x, 256MB, always-on, health check at `/health`)
-- [x] Create `.dockerignore` (excludes node_modules, .env files, UI, scripts)
-- [x] Verify `npm run build` produces correct `dist/` with Prisma client
-- [x] Health check endpoint exists at `GET /health`
-- [ ] **TODO:** Install flyctl CLI, run deployment commands (see below)
-
-### Phase 6: CI/CD
-- [ ] GitHub Actions: build + deploy on push to main
-- [ ] Automated Prisma migrations on deploy
-- [ ] Remove old GitHub Actions update-playlists workflow (replaced by in-app scheduler)
-
 ---
 
 ## Environment Variables (Production)
 
-```env
-# Server
-PORT=3000
-NODE_ENV=production
+Stored in **Google Cloud Secret Manager**, injected at deploy time:
 
-# Telegram
-TELEGRAM_BOT_TOKEN=xxx
-
-# Spotify
-SPOTIFY_CLIENT_ID=xxx
-SPOTIFY_CLIENT_SECRET=xxx
-SPOTIFY_REDIRECT_URI=https://brewtify-bot.fly.dev/callback
-
-# Database (Neon)
-DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/brewtify?sslmode=require
-
-# Cache (Upstash Redis)
-UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
-UPSTASH_REDIS_REST_TOKEN=xxx
-
-# Security
-ENCRYPTION_KEY=<64-char hex string for AES-256>
-```
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `ENCRYPTION_KEY` | 64-char hex string for AES-256 master key |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis HTTP endpoint |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API token |
+| `SPOTIFY_CLIENT_ID` | Spotify app client ID |
+| `SPOTIFY_CLIENT_SECRET` | Spotify app client secret |
+| `SPOTIFY_REDIRECT_URI` | OAuth callback URL (Cloud Run domain) |
+| `CRON_SECRET` | Secret for Cloud Scheduler authentication |
 
 ---
 
-## Cost Summary
+## CI/CD: GitHub Actions → Cloud Run
 
-| Service | Free Limit | Sufficient? |
-|---------|-----------|-------------|
-| Fly.io | 3 VMs (256MB, shared CPU) | ✅ Bot + Express on 1 VM |
-| Neon (Postgres) | 10 GB, serverless | ✅ More than enough |
-| Upstash (Redis) | 10K cmd/day, 256MB | ✅ For caching |
-| **Total** | **$0/month** | ✅ |
+Workflow: `.github/workflows/cloud-run-deploy.yml`
+
+- Triggered on push to `main`
+- Authenticates via **Workload Identity Federation** (no service account key)
+- Runs `gcloud run deploy --source .` (builds Dockerfile in Cloud Build)
+- Injects secrets from Secret Manager
+
+GitHub repo secrets:
+- `GCP_PROJECT_ID` = `brewtify-498108`
+- `GCP_SERVICE_ACCOUNT` = `github-deploy@brewtify-498108.iam.gserviceaccount.com`
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` = full provider resource name
 
 ---
 
-## Migration Path from Current → Production
+## Cost
 
-1. `TokenStore` (file `.data/tokens.json`) → PostgreSQL `users` table + AES-256-GCM ✅
-2. `.cache/` directory → Upstash Redis with TTL ✅
-3. In-memory `pendingAuthStore` Map → Redis with 10-min TTL ✅
-4. GitHub Actions cron → in-app node-cron scheduler (Phase 3)
-5. Long polling → (optional) Webhook mode (Phase 5)
+| Service | Tier | Monthly Cost |
+|---------|------|-------------|
+| Cloud Run | Free (scale-to-zero, <2M requests) | $0 |
+| Cloud Scheduler | Free (3 jobs free) | $0 |
+| Neon PostgreSQL | Free (10 GB) | $0 |
+| Upstash Redis | Free (10K cmd/day) | $0 |
+| **Total** | | **$0** |
+
+---
+
+## Implementation Phases (Historical)
+
+### Phase 1: Database & ORM Setup ✅
+- Prisma ORM with Neon PostgreSQL
+- AES-256-GCM encryption for tokens
+- Replaced file-based TokenStore with DB-backed encrypted store
+
+### Phase 2: Redis Cache Layer ✅
+- Upstash Redis replacing file-based cache
+- Pending auth state moved to Redis (10-min TTL)
+
+### Phase 3: Scheduling System ✅
+- p-queue concurrency control
+- Bot commands: `/schedule`, `/pause`, `/resume`, `/status`
+
+### Phase 4: Cloud Run Migration ✅
+- Removed `node-cron` → Cloud Scheduler
+- Switched bot to webhook mode
+- Deployed to Cloud Run (me-west1)
+- CI/CD via Workload Identity Federation
+- Destroyed Fly.io app
+
+See `docs/cloud-run-migration.md` for the full migration log.

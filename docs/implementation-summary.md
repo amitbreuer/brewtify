@@ -2,7 +2,7 @@
 
 ## What Is Brewtify
 
-Brewtify is a Spotify playlist management service — a "Playlists Brewery" — that lets users create playlists from their followed artists, auto-refresh them on a schedule, and manage everything via a Telegram Mini App. It runs 24/7 on Fly.io.
+Brewtify is a Spotify playlist management service — a "Playlists Brewery" — that lets users create playlists from their followed artists, auto-refresh them on a schedule, and manage everything via a Telegram Mini App. It runs on Google Cloud Run (scale-to-zero).
 
 ---
 
@@ -10,20 +10,21 @@ Brewtify is a Spotify playlist management service — a "Playlists Brewery" — 
 
 ```
 ┌──────────────┐       ┌──────────────────┐       ┌─────────────────┐
-│   Telegram   │◄─────►│   Fly.io VM      │◄─────►│  Neon PostgreSQL│
-│   Users      │       │   (Node.js)      │       │  (Free tier)    │
+│   Telegram   │◄─────►│  Cloud Run       │◄─────►│  Neon PostgreSQL│
+│   Users      │       │  (me-west1)      │       │  (Free tier)    │
 └──────────────┘       │                  │       └─────────────────┘
                        │  - Express API   │
 ┌──────────────┐       │  - grammY Bot    │       ┌─────────────────┐
-│  Mini App    │◄─────►│  - Scheduler     │◄─────►│  Upstash Redis  │
+│  Mini App    │◄─────►│    (webhook)     │◄─────►│  Upstash Redis  │
 │  (React SPA) │       │  - Rate Limiter  │       │  (Free tier)    │
 └──────────────┘       └──────────────────┘       └─────────────────┘
                                │
-                               ▼
-                       ┌──────────────────┐
-                       │   Spotify API    │
-                       │  (Web API v1)    │
-                       └──────────────────┘
+          ┌────────────────────┼────────────────────┐
+          ▼                                         ▼
+┌──────────────────┐                    ┌───────────────────┐
+│   Spotify API    │                    │  Cloud Scheduler   │
+│  (Web API v1)    │                    │  (daily cron)      │
+└──────────────────┘                    └───────────────────┘
 ```
 
 ---
@@ -33,11 +34,11 @@ Brewtify is a Spotify playlist management service — a "Playlists Brewery" — 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Frontend | React 19, Tailwind CSS, Vite 8 | Telegram Mini App (SPA) |
-| Backend | Express 5, grammY, TypeScript | API server + Telegram bot |
+| Backend | Express 5, grammY, TypeScript | API server + Telegram bot (webhook) |
 | Database | Neon PostgreSQL + Prisma ORM | Users, playlists, schedules |
 | Cache | Upstash Redis (HTTP-based) | Spotify data caching (albums, tracks, auth state) |
 | Shared Logic | @brewtify/shared | Track selection algorithm |
-| Deployment | Fly.io (Docker), GitHub Actions | Always-on VM, CI/CD |
+| Deployment | Cloud Run, Cloud Scheduler, GitHub Actions | Scale-to-zero, daily cron, CI/CD |
 | Rate Limiting | p-queue (concurrency + interval) | Spotify API rate limit compliance |
 | Logging | Structured JSON logger | Observability (request tracing, error reporting) |
 
@@ -315,7 +316,7 @@ Scheduler (scheduler.ts)              Database                SpotifyService    
 The HTTP server that powers both the Mini App and the bot's backend operations.
 
 **Responsibilities:**
-- CORS enforcement (whitelist: Fly.io domain + localhost)
+- CORS enforcement (whitelist: Cloud Run domain + localhost)
 - Request logging middleware (method, path, status, duration, user ID)
 - Static file serving for the Mini App (`/app/*`)
 - JSON body parsing for API routes
@@ -323,9 +324,10 @@ The HTTP server that powers both the Mini App and the bot's backend operations.
 **Route groups:**
 | Prefix | File | Purpose |
 |--------|------|---------|
-| `/health` | `routes/health.ts` | Health check for Fly.io (returns 200) |
+| `/health` | `routes/health.ts` | Health check for Cloud Run (returns 200) |
 | `/login`, `/callback` | `routes/auth.ts` | Spotify OAuth flow |
 | `/api/*` | `routes/spotify.ts` | All authenticated Spotify operations |
+| `/cron/update` | `routes/cron.ts` | Cloud Scheduler endpoint (X-Cron-Secret auth) |
 
 ---
 
@@ -344,7 +346,7 @@ A grammY-based bot that provides a conversational interface for schedule managem
 | `/resume "name"` | Resumes a paused playlist |
 | `/status` | Shows all scheduled playlists + their status |
 
-**Startup behavior:** Bot startup is non-fatal — if another instance is already polling (e.g., Fly.io production while developing locally), it logs a warning and continues without the bot.
+**Startup behavior:** Bot uses webhook mode — registers a `POST /bot/webhook` route on the Express app. Compatible with Cloud Run's scale-to-zero (no persistent connection needed).
 
 ---
 
@@ -437,7 +439,7 @@ A React 19 SPA served by the backend at `/app`. Opened inside Telegram as a Web 
 ### Structured Logger (`projects/api/src/utils/logger.ts`)
 
 All backend logging goes through a centralized logger that outputs:
-- **Production:** JSON lines (for Fly.io log aggregation)
+- **Production:** JSON lines (for Cloud Run log aggregation)
 - **Development:** Human-readable format with timestamps and context
 
 **Log levels:** `debug` → `info` → `warn` → `error` (controlled by `LOG_LEVEL` env var)
@@ -493,7 +495,7 @@ model Playlist {
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot API token |
 | `SPOTIFY_CLIENT_ID` | Spotify app client ID |
 | `SPOTIFY_CLIENT_SECRET` | Spotify app client secret |
-| `SPOTIFY_REDIRECT_URI` | OAuth callback URL (Fly.io domain) |
+| `SPOTIFY_REDIRECT_URI` | OAuth callback URL (Cloud Run domain) |
 | `CORS_ORIGINS` | Additional allowed origins (comma-separated) |
 | `LOG_LEVEL` | Logging verbosity: debug/info/warn/error |
 | `PORT` | Server port (default: 5173) |
@@ -518,13 +520,15 @@ model Playlist {
 - Copy Mini App dist (static files)
 ```
 
-### Fly.io Configuration
+### Cloud Run Configuration
 
-- **Machine:** shared-cpu-1x, 256 MB RAM
-- **Mode:** Always-on (`auto_stop_machines = 'off'`, `min_machines_running = 1`)
-- **Health check:** `GET /health` every 30 seconds
-- **Region:** `iad` (US East)
-- **CI/CD:** Auto-deploy on push to `main` via GitHub Actions
+- **Region:** me-west1
+- **Mode:** Scale-to-zero (`min-instances=0`, `max-instances=2`)
+- **Health check:** `GET /health`
+- **Timeout:** 300 seconds
+- **Bot mode:** Webhook (POST /bot/webhook)
+- **Scheduler:** Cloud Scheduler sends `POST /cron/update` daily at 00:00 UTC
+- **CI/CD:** Auto-deploy on push to `main` via GitHub Actions (Workload Identity Federation)
 
 ---
 
@@ -532,7 +536,8 @@ model Playlist {
 
 | Service | Tier | Monthly Cost |
 |---------|------|-------------|
-| Fly.io | Free (1 shared VM, 256MB) | $0 |
+| Cloud Run | Free (scale-to-zero, <2M requests) | $0 |
+| Cloud Scheduler | Free (3 jobs free) | $0 |
 | Neon PostgreSQL | Free (10 GB) | $0 |
 | Upstash Redis | Free (10K cmd/day) | $0 |
 | **Total** | | **$0** |
