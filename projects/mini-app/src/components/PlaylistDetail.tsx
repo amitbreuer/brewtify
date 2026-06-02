@@ -34,12 +34,34 @@ interface PlaylistSettings {
   era: number;
   count: number;
   schedule: string | null;
+  lastUpdatedAt: string | null;
+  nextUpdateAt: string | null;
+}
+
+function formatScheduleDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  if (diffMs < 0) {
+    // Past
+    if (diffHours > -24) return `${Math.abs(diffHours)}h ago`;
+    return `${Math.abs(diffDays)}d ago`;
+  }
+  // Future
+  if (diffHours < 24) return `in ${diffHours}h`;
+  if (diffDays <= 7) return `in ${diffDays}d`;
+  return dateStr;
 }
 
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100, schedule: null });
+  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100, schedule: null, lastUpdatedAt: null, nextUpdateAt: null });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -111,6 +133,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
           era: dbSettings.eraPreference ?? 50,
           count: dbSettings.trackCount ?? 100,
           schedule: dbSettings.schedule ?? null,
+          lastUpdatedAt: dbSettings.lastUpdatedAt ?? null,
+          nextUpdateAt: dbSettings.nextUpdateAt ?? null,
         };
         setSettings(parsed);
         syncWeightsFromSettings(weights);
@@ -290,6 +314,23 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
         {isAutoUpdate && (
           <>
+            {/* Schedule info */}
+            {settings.schedule && (settings.lastUpdatedAt || settings.nextUpdateAt) && (
+              <div className="bg-[#181818] rounded-xl p-4 flex flex-col gap-2">
+                {settings.lastUpdatedAt && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[#B3B3B3]">Last updated</span>
+                    <span className="text-xs text-white">{formatScheduleDate(settings.lastUpdatedAt)}</span>
+                  </div>
+                )}
+                {settings.nextUpdateAt && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[#B3B3B3]">Next update</span>
+                    <span className="text-xs text-white">{formatScheduleDate(settings.nextUpdateAt)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             {/* Settings section */}
             <div className="bg-[#181818] rounded-xl p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">

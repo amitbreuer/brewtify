@@ -100,6 +100,7 @@ export interface PlaylistSettings {
   schedule?: string | null;
   status?: string;
   lastUpdatedAt?: string | null;
+  nextUpdateAt?: string | null;
 }
 
 export async function fetchPlaylistSettings(playlistId: string): Promise<PlaylistSettings> {

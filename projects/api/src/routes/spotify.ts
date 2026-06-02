@@ -3,6 +3,7 @@ import { spotifyService } from '../services/spotify';
 import { getAccessTokenForUser } from './auth';
 import { selectRandomTracks } from '@brewtify/shared';
 import { prisma } from '../services/db';
+import { calculateNextUpdate } from '../services/scheduler';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('spotify-routes');
@@ -174,6 +175,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
     // Save playlist settings to database
     const user = await prisma.user.findUnique({ where: { telegramUserId } });
     if (user) {
+      const nextUpdateAt = schedule ? calculateNextUpdate(schedule) : null;
       await prisma.playlist.upsert({
         where: { userId_spotifyPlaylistId: { userId: user.id, spotifyPlaylistId: playlist.id } },
         create: {
@@ -185,6 +187,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
           schedule: schedule || null,
+          nextUpdateAt,
         },
         update: {
           name,
@@ -193,6 +196,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
           schedule: schedule || null,
+          nextUpdateAt,
         },
       });
     }
@@ -278,6 +282,16 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
 
     await spotifyService.replacePlaylistTracks(token, spotifyPlaylistId, uris);
 
+    // Update lastUpdatedAt (and recalculate nextUpdateAt if scheduled)
+    const updateFields: any = { lastUpdatedAt: new Date() };
+    if (dbPlaylist.schedule) {
+      updateFields.nextUpdateAt = calculateNextUpdate(dbPlaylist.schedule);
+    }
+    await prisma.playlist.update({
+      where: { id: dbPlaylist.id },
+      data: updateFields,
+    });
+
     log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: uris.length });
     res.json({ success: true, trackCount: uris.length, artistCount: artistIds.length });
   } catch (err: unknown) {
@@ -329,6 +343,7 @@ spotifyRoutes.get('/api/playlists/:playlistId/settings', async (req: Request, re
       schedule: dbPlaylist.schedule,
       status: dbPlaylist.status,
       lastUpdatedAt: dbPlaylist.lastUpdatedAt,
+      nextUpdateAt: dbPlaylist.nextUpdateAt,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -369,7 +384,17 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
     if (trackCount !== undefined) updateData.trackCount = Math.min(Math.max(trackCount, 20), 200);
     if (weights !== undefined) updateData.weights = weights;
     if (eraPreference !== undefined) updateData.eraPreference = Math.min(Math.max(eraPreference, 0), 100);
-    if (schedule !== undefined) updateData.schedule = schedule;
+    if (schedule !== undefined) {
+      updateData.schedule = schedule;
+      if (schedule) {
+        updateData.nextUpdateAt = calculateNextUpdate(schedule);
+        updateData.status = 'active';
+        updateData.failureCount = 0;
+        updateData.lastError = null;
+      } else {
+        updateData.nextUpdateAt = null;
+      }
+    }
 
     await prisma.playlist.update({
       where: { id: dbPlaylist.id },
