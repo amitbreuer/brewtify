@@ -39,6 +39,10 @@ export async function fetchProfile(): Promise<UserProfile> {
   return fetchAPI<UserProfile>('/api/profile');
 }
 
+export async function logout(): Promise<void> {
+  await fetchAPI('/logout', { method: 'POST' });
+}
+
 export async function fetchPlaylists(): Promise<{ items: Playlist[]; total: number }> {
   return fetchAPI<{ items: Playlist[]; total: number }>('/api/playlists?limit=50');
 }

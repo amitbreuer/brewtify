@@ -26,6 +26,10 @@ export default function App() {
 
   const onProfileLoaded = useCallback(() => {}, []);
 
+  const handleLogout = useCallback(() => {
+    setView('login');
+  }, []);
+
   const handlePlaylistCreated = () => {
     setRefreshKey((k) => k + 1);
     setView('home');
@@ -64,7 +68,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#121212] text-white pb-20">
       <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10">
-        <Profile onProfileLoaded={onProfileLoaded} />
+        <Profile onProfileLoaded={onProfileLoaded} onLogout={handleLogout} />
       </header>
 
       <main>

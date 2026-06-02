@@ -111,3 +111,17 @@ export async function getAccessTokenForUser(telegramUserId: string): Promise<str
   refreshLocks.set(telegramUserId, refreshPromise);
   return refreshPromise;
 }
+
+// POST /logout — remove stored tokens for the user
+authRoutes.post('/logout', async (req: Request, res: Response) => {
+  const telegramUserId = req.headers['x-telegram-user-id'] as string | undefined;
+
+  if (!telegramUserId) {
+    res.status(401).json({ error: 'Missing X-Telegram-User-Id header' });
+    return;
+  }
+
+  await tokenStore.delete(telegramUserId);
+  log.info('User logged out', { telegramUserId });
+  res.json({ success: true });
+});
