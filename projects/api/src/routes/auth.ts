@@ -58,11 +58,115 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
     await pendingAuthStore.delete(state as string);
     log.info('OAuth completed successfully', { telegramUserId });
 
-    res.send('<h1>✅ Logged in!</h1><p>You can close this window and return to Telegram.</p>');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brewtify — Connected</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #121212;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      background: #1DB954;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 32px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: #B3B3B3;
+      font-size: 0.95rem;
+      max-width: 280px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">✓</div>
+    <h1>You're connected!</h1>
+    <p>You can close this window and return to Telegram.</p>
+  </div>
+</body>
+</html>`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     log.error('OAuth callback failed', { telegramUserId, error: message });
-    res.status(500).send('Failed to complete authorization. Please try /login again.');
+    res.status(500).send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brewtify — Error</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #121212;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      background: #e74c3c;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 32px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: #B3B3B3;
+      font-size: 0.95rem;
+      max-width: 280px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">✕</div>
+    <h1>Connection failed</h1>
+    <p>Please try /login again in Telegram.</p>
+  </div>
+</body>
+</html>`);
   }
 });
 

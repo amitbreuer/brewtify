@@ -26,7 +26,8 @@ export function MinusIcon({ className = '', size = 20 }: IconProps) {
 export function CloseIcon({ className = '', size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -34,7 +35,8 @@ export function CloseIcon({ className = '', size = 20 }: IconProps) {
 export function CheckIcon({ className = '', size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 12.5l2.5 2.5L16 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
