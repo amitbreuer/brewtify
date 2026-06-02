@@ -4,14 +4,27 @@ import { formatEvent } from './formatter';
 
 class TapNotifier {
   private config: TapConfig;
+  private usernames = new Map<string, string>();
 
   constructor(config?: Partial<TapConfig>) {
     const defaults = loadConfig();
     this.config = { ...defaults, ...config };
   }
 
+  /** Register a userId → username mapping for enriching notifications */
+  setUsername(userId: string, username: string): void {
+    if (userId && username) {
+      this.usernames.set(userId, username);
+    }
+  }
+
   async notify(event: TapEvent): Promise<void> {
     if (!this.config.enabled) return;
+
+    // Auto-resolve username from registry if not provided
+    if (!event.username && event.userId) {
+      event = { ...event, username: this.usernames.get(event.userId) };
+    }
 
     const text = formatEvent({ ...event, timestamp: event.timestamp || new Date() });
 

@@ -25,6 +25,16 @@ export function createBot() {
   const token = env('TELEGRAM_BOT_TOKEN');
   const bot = new Bot(token);
 
+  // Register username for all tap notifications
+  bot.use(async (ctx, next) => {
+    if (ctx.from) {
+      const userId = ctx.from.id.toString();
+      const username = ctx.from.username || ctx.from.first_name;
+      if (username) getTap().setUsername(userId, username);
+    }
+    await next();
+  });
+
   bot.command('start', async (ctx) => {
     getTap().notify({
       type: 'user.start',
