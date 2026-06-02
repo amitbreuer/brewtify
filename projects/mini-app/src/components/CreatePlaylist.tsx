@@ -18,7 +18,6 @@ import {
   WeightControl,
   WeightValidation,
   PageHeader,
-  StatusBar,
 } from './shared';
 
 interface CreatePlaylistProps {
@@ -33,7 +32,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [eraPreference, setEraPreference] = useState(50);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [status, setStatus] = useState('');
+  const [createResult, setCreateResult] = useState<'success' | 'error' | null>(null);
 
   useEffect(() => {
     fetchPlaylists().then((data) => {
@@ -88,7 +87,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
     if (!playlistName || selectedArtists.size === 0) return;
 
     setCreating(true);
-    setStatus('Creating playlist...');
+    setCreateResult(null);
 
     try {
       const profile: UserProfile = await fetchProfile();
@@ -108,7 +107,6 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         eraPreference,
         schedule,
       });
-      setStatus(`Gathering tracks from ${artistIds.length} artists...`);
 
       const results = await Promise.allSettled(
         artistIds.map((id) => fetchAllArtistTracks(id))
@@ -123,8 +121,9 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       });
 
       if (artistTrackMap.size === 0) {
-        setStatus('No tracks found!');
+        setCreateResult('error');
         setCreating(false);
+        setTimeout(() => setCreateResult(null), 2000);
         return;
       }
 
@@ -174,14 +173,14 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       selected = selected.sort(() => Math.random() - 0.5);
       const trackUris = selected.map((t) => t.uri);
 
-      setStatus(`Adding ${selected.length} tracks...`);
       await addTracksToPlaylist(playlist.id, trackUris);
 
-      setStatus(`✅ "${playlistName}" created with ${selected.length} tracks!`);
+      setCreateResult('success');
       setTimeout(() => onCreated(), 1500);
     } catch (err: any) {
-      setStatus(`❌ Error: ${err.message}`);
+      setCreateResult('error');
       setCreating(false);
+      setTimeout(() => setCreateResult(null), 2000);
     }
   };
 
@@ -350,16 +349,27 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         )}
       </div>
 
-      <StatusBar message={status} />
 
       {/* Create button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#121212] border-t border-[#282828]">
         <button
           onClick={handleCreate}
           disabled={creating || !playlistName || selectedArtists.size === 0 || !isWeightValid}
-          className="w-full py-4 bg-[#1DB954] hover:bg-[#1ED760] disabled:bg-[#282828] disabled:text-[#535353] text-black font-bold rounded-full text-lg"
+          className={`w-full py-4 font-bold rounded-full text-lg ${
+            createResult === 'success'
+              ? 'bg-[#1DB954] text-black'
+              : createResult === 'error'
+              ? 'bg-[#282828] text-[#B3B3B3]'
+              : 'bg-[#1DB954] hover:bg-[#1ED760] disabled:bg-[#282828] disabled:text-[#535353] text-black'
+          }`}
         >
-          {creating ? 'Creating...' : `Create (${selectedArtists.size} artists, ${songCount} tracks)`}
+          {createResult === 'success'
+            ? '✓ Created!'
+            : createResult === 'error'
+            ? '✗ Failed'
+            : creating
+            ? 'Creating...'
+            : `Create (${selectedArtists.size} artists, ${songCount} tracks)`}
         </button>
       </div>
     </div>

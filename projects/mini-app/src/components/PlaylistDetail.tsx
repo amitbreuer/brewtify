@@ -19,7 +19,6 @@ import {
   WeightControl,
   WeightValidation,
   PageHeader,
-  StatusBar,
   ErrorState,
   PlaylistDetailSkeleton,
 } from './shared';
@@ -66,7 +65,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState('');
+  const [actionResult, setActionResult] = useState<'success' | 'error' | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -148,7 +147,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         }
       }
     } catch (err: any) {
-      setStatus(`❌ ${err.message}`);
+      setActionResult('error');
+      setTimeout(() => setActionResult(null), 2000);
     } finally {
       setLoading(false);
     }
@@ -179,21 +179,22 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
   const handleRefresh = async () => {
     setUpdating(true);
-    setStatus('Refreshing playlist...');
+    setActionResult(null);
     try {
-      const result = await updatePlaylist(playlistId);
-      setStatus(`✅ Updated with ${result.trackCount} tracks from ${result.artistCount} artists!`);
+      await updatePlaylist(playlistId);
+      setActionResult('success');
       await loadPlaylist();
     } catch (err: any) {
-      setStatus(`❌ ${err.message}`);
+      setActionResult('error');
     } finally {
       setUpdating(false);
+      setTimeout(() => setActionResult(null), 2000);
     }
   };
 
   const handleSave = async () => {
     setSaving(true);
-    setStatus('Saving settings...');
+    setActionResult(null);
     try {
       const weightsObj = weightMap.size > 0
         ? Object.fromEntries(weightMap)
@@ -207,18 +208,19 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       });
       setDirty(false);
       setEditMode(false);
-      setStatus('✅ Settings saved!');
+      setActionResult('success');
       await loadPlaylist();
     } catch (err: any) {
-      setStatus(`❌ ${err.message}`);
+      setActionResult('error');
     } finally {
       setSaving(false);
+      setTimeout(() => setActionResult(null), 2000);
     }
   };
 
   const handleSaveAndRefresh = async () => {
     setSaving(true);
-    setStatus('Saving & refreshing...');
+    setActionResult(null);
     try {
       const weightsObj = weightMap.size > 0
         ? Object.fromEntries(weightMap)
@@ -232,16 +234,16 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       });
       setDirty(false);
       setEditMode(false);
-      setStatus('Refreshing playlist...');
       setUpdating(true);
-      const result = await updatePlaylist(playlistId);
-      setStatus(`✅ Saved & refreshed with ${result.trackCount} tracks!`);
+      await updatePlaylist(playlistId);
+      setActionResult('success');
       await loadPlaylist();
     } catch (err: any) {
-      setStatus(`❌ ${err.message}`);
+      setActionResult('error');
     } finally {
       setSaving(false);
       setUpdating(false);
+      setTimeout(() => setActionResult(null), 2000);
     }
   };
 
@@ -255,9 +257,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       await renamePlaylist(playlistId, trimmed);
       setPlaylist({ ...playlist, name: trimmed });
       setEditingName(false);
-      setStatus('✅ Playlist renamed!');
+      setActionResult('success');
+      setTimeout(() => setActionResult(null), 2000);
     } catch (err: any) {
-      setStatus(`❌ ${err.message}`);
+      setActionResult('error');
+      setTimeout(() => setActionResult(null), 2000);
     }
   };
 
@@ -336,10 +340,20 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
             <button
               onClick={handleRefresh}
               disabled={updating}
-              className="p-3 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full disabled:opacity-50"
+              className={`p-3 rounded-full disabled:opacity-50 ${
+                actionResult === 'success'
+                  ? 'bg-[#1DB954] text-black'
+                  : actionResult === 'error'
+                  ? 'bg-[#282828] text-[#B3B3B3]'
+                  : 'bg-[#1DB954] hover:bg-[#1ED760] text-black'
+              }`}
               title="Refresh playlist"
             >
-              <RefreshIcon size={22} className={updating ? 'animate-spin' : ''} />
+              {actionResult === 'success'
+                ? <CheckIcon size={22} />
+                : actionResult === 'error'
+                ? <CloseIcon size={22} />
+                : <RefreshIcon size={22} className={updating ? 'animate-spin' : ''} />}
             </button>
           )}
         </div>
@@ -586,7 +600,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         )}
       </div>
 
-      <StatusBar message={status} />
 
       {/* Bottom actions */}
       {editMode && (
@@ -594,16 +607,28 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
           <button
             onClick={handleSave}
             disabled={!dirty || saving || updating || !isWeightValid}
-            className="flex-1 py-3 bg-[#282828] border border-[#1DB954] text-[#1DB954] font-bold rounded-full text-sm disabled:opacity-50"
+            className={`flex-1 py-3 font-bold rounded-full text-sm disabled:opacity-50 ${
+              actionResult === 'success'
+                ? 'bg-[#1DB954] text-black'
+                : actionResult === 'error'
+                ? 'bg-[#282828] text-[#B3B3B3]'
+                : 'bg-[#282828] border border-[#1DB954] text-[#1DB954]'
+            }`}
           >
-            {saving && !updating ? 'Saving...' : 'Save'}
+            {actionResult === 'success' ? '✓ Saved' : actionResult === 'error' ? '✗ Failed' : saving && !updating ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={handleSaveAndRefresh}
             disabled={!dirty || saving || updating || !isWeightValid}
-            className="flex-1 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-sm disabled:opacity-50"
+            className={`flex-1 py-3 font-bold rounded-full text-sm disabled:opacity-50 ${
+              actionResult === 'success'
+                ? 'bg-[#1DB954] text-black'
+                : actionResult === 'error'
+                ? 'bg-[#282828] text-[#B3B3B3]'
+                : 'bg-[#1DB954] hover:bg-[#1ED760] text-black'
+            }`}
           >
-            {updating ? 'Refreshing...' : 'Save & Refresh'}
+            {actionResult === 'success' ? '✓ Done' : actionResult === 'error' ? '✗ Failed' : updating ? 'Refreshing...' : 'Save & Refresh'}
           </button>
         </div>
       )}
