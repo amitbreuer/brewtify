@@ -4,12 +4,13 @@ import { PlaylistList } from './components/PlaylistList';
 import { CreatePlaylist } from './components/CreatePlaylist';
 import { PlaylistDetail } from './components/PlaylistDetail';
 import { LoginScreen } from './components/LoginScreen';
+import { ErrorScreen } from './components/ErrorScreen';
 import { PlusIcon } from './components/Icons';
 import { fetchProfile } from './lib/api';
 
 export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail'>('loading');
+  const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail' | 'error'>('loading');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,7 +20,7 @@ export default function App() {
         if ((err as any).status === 401) {
           setView('login');
         } else {
-          setView('home'); // show home, Profile component will display error
+          setView('error');
         }
       });
   }, []);
@@ -50,6 +51,10 @@ export default function App() {
 
   if (view === 'login') {
     return <LoginScreen />;
+  }
+
+  if (view === 'error') {
+    return <ErrorScreen />;
   }
 
   if (view === 'create') {

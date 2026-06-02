@@ -53,6 +53,11 @@ spotifyRoutes.get('/api/profile', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     log.error('Failed to fetch profile', { error: message });
+    getTap().notify({
+      type: 'error.general',
+      userId: (req as AuthenticatedRequest).telegramUserId,
+      message: `Profile fetch failed: ${message}`,
+    });
     res.status(500).json({ error: message });
   }
 });
