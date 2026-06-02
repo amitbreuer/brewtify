@@ -49,6 +49,9 @@ jobs:
             UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
             TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest
             CRON_SECRET=CRON_SECRET:latest
+            TAP_BOT_TOKEN=TAP_BOT_TOKEN:latest
+            TAP_ADMIN_CHAT_ID=TAP_ADMIN_CHAT_ID:latest
+            TAP_ENABLED=TAP_ENABLED:latest
           flags: |
             --min-instances=0
             --max-instances=2

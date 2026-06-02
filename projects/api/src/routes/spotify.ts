@@ -5,6 +5,7 @@ import { selectRandomTracks } from '@brewtify/shared';
 import { prisma } from '../services/db';
 import { calculateNextUpdate } from '../services/scheduler';
 import { createLogger } from '../utils/logger';
+import { getTap } from '@brewtify/tap';
 
 const log = createLogger('spotify-routes');
 
@@ -202,6 +203,12 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
     }
 
     log.info('Playlist created', { playlistId: playlist.id, name, artistCount: artistIds.length });
+    getTap().notify({
+      type: 'playlist.create',
+      userId: telegramUserId,
+      message: `Created playlist "${name}"`,
+      meta: { playlistId: playlist.id, artistCount: artistIds.length, trackCount: trackCount || 100 },
+    });
     res.json(playlist);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -293,6 +300,12 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
     });
 
     log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: uris.length });
+    getTap().notify({
+      type: 'playlist.update',
+      userId: telegramUserId,
+      message: `Manually refreshed playlist`,
+      meta: { spotifyPlaylistId, trackCount: uris.length, artistCount: artistIds.length },
+    });
     res.json({ success: true, trackCount: uris.length, artistCount: artistIds.length });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

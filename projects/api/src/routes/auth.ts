@@ -4,6 +4,7 @@ import { spotifyService } from '../services/spotify';
 import { tokenStore } from '../services/token-store-db';
 import { pendingAuthStore } from '../services/pending-auth-store';
 import { createLogger } from '../utils/logger';
+import { getTap } from '@brewtify/tap';
 
 const log = createLogger('auth');
 
@@ -57,6 +58,11 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
 
     await pendingAuthStore.delete(state as string);
     log.info('OAuth completed successfully', { telegramUserId });
+    getTap().notify({
+      type: 'user.login',
+      userId: telegramUserId,
+      message: 'User connected Spotify account',
+    });
 
     res.send(`<!DOCTYPE html>
 <html>

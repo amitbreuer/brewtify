@@ -3,6 +3,7 @@ import { prisma } from './db';
 import { spotifyService } from './spotify';
 import { getAccessTokenForUser } from '../routes/auth';
 import { createLogger } from '../utils/logger';
+import { getTap } from '@brewtify/tap';
 
 const log = createLogger('scheduler');
 
@@ -28,18 +29,33 @@ export async function processScheduledUpdates() {
   }
 
   log.info(`${duePlaylists.length} playlist(s) due for update`);
+  getTap().notify({
+    type: 'cron.start',
+    message: `Cron started — ${duePlaylists.length} playlist(s) due for update`,
+  });
 
   const queue = new PQueue({ concurrency: CONCURRENCY });
+  let successCount = 0;
+  let failCount = 0;
 
   for (const playlist of duePlaylists) {
-    queue.add(() => updatePlaylist(playlist));
+    queue.add(async () => {
+      const ok = await updatePlaylist(playlist);
+      if (ok) successCount++;
+      else failCount++;
+    });
   }
 
   await queue.onIdle();
   log.info('All updates complete');
+  getTap().notify({
+    type: 'cron.summary',
+    message: `Cron complete — ${successCount} succeeded, ${failCount} failed (${duePlaylists.length} total)`,
+    meta: { successCount, failCount, total: duePlaylists.length },
+  });
 }
 
-async function updatePlaylist(playlist: any) {
+async function updatePlaylist(playlist: any): Promise<boolean> {
   const { id, spotifyPlaylistId, artistIds, trackCount, user } = playlist;
   const telegramUserId = user.telegramUserId;
 
@@ -48,7 +64,13 @@ async function updatePlaylist(playlist: any) {
     const accessToken = await getAccessTokenForUser(telegramUserId);
     if (!accessToken) {
       await markFailed(id, 'auth_expired', 'No valid token — user needs to /login again');
-      return;
+      getTap().notify({
+        type: 'error.auth',
+        userId: telegramUserId,
+        message: `Token expired for scheduled playlist`,
+        meta: { spotifyPlaylistId },
+      });
+      return false;
     }
 
     // Fetch tracks from all artists
@@ -60,7 +82,13 @@ async function updatePlaylist(playlist: any) {
 
     if (allTracks.length === 0) {
       await markFailed(id, 'failed', 'No tracks found for configured artists');
-      return;
+      getTap().notify({
+        type: 'cron.failure',
+        userId: telegramUserId,
+        message: `No tracks found for playlist`,
+        meta: { spotifyPlaylistId },
+      });
+      return false;
     }
 
     // Shuffle (Fisher-Yates) and select
@@ -86,6 +114,13 @@ async function updatePlaylist(playlist: any) {
     });
 
     log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: selectedTracks.length });
+    getTap().notify({
+      type: 'cron.success',
+      userId: telegramUserId,
+      message: `Playlist updated (${selectedTracks.length} tracks)`,
+      meta: { spotifyPlaylistId, trackCount: selectedTracks.length },
+    });
+    return true;
   } catch (err: any) {
     log.error('Failed to update playlist', { playlistId: id, error: err.message });
 
@@ -101,6 +136,14 @@ async function updatePlaylist(playlist: any) {
         },
       });
     }
+
+    getTap().notify({
+      type: 'cron.failure',
+      userId: telegramUserId,
+      message: `Failed to update playlist: ${err.message}`,
+      meta: { spotifyPlaylistId, failureCount: newFailureCount },
+    });
+    return false;
   }
 }
 

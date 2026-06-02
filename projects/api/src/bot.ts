@@ -8,6 +8,7 @@ import { pendingAuthStore } from './services/pending-auth-store';
 import { prisma } from './services/db';
 import { calculateNextUpdate } from './services/scheduler';
 import { createLogger } from './utils/logger';
+import { getTap } from '@brewtify/tap';
 
 const log = createLogger('bot');
 
@@ -25,6 +26,12 @@ export function createBot() {
   const bot = new Bot(token);
 
   bot.command('start', async (ctx) => {
+    getTap().notify({
+      type: 'user.start',
+      userId: ctx.from?.id.toString(),
+      username: ctx.from?.username,
+      message: 'User started the bot',
+    });
     await ctx.reply('👋 Welcome to Brewtify Bot! Use /help to see available commands.');
   });
 
@@ -158,6 +165,13 @@ export function createBot() {
       : `Weekly on ${dayNames[parseInt(scheduleStr.split(':')[1])]} at 00:00 UTC`;
 
     await ctx.reply(`✅ Scheduled "${playlist.name}" — ${scheduleLabel}\n📅 Next update: ${nextUpdate.toISOString().split('T')[0]}`);
+    getTap().notify({
+      type: 'playlist.schedule',
+      userId: telegramUserId,
+      username: ctx.from?.username,
+      message: `Scheduled "${playlist.name}" — ${scheduleLabel}`,
+      meta: { playlistName: playlist.name, schedule: scheduleStr },
+    });
   });
 
   // /pause <playlist_name>
