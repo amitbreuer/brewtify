@@ -58,10 +58,21 @@ authRoutes.get('/callback', async (req: Request, res: Response) => {
 
     await pendingAuthStore.delete(state as string);
     log.info('OAuth completed successfully', { telegramUserId });
+
+    // Fetch profile for tap notification (best-effort)
+    let spotifyName = '';
+    let spotifyEmail = '';
+    try {
+      const profile = await spotifyService.getProfile(tokens.access_token);
+      spotifyName = profile.display_name || '';
+      spotifyEmail = profile.email || '';
+    } catch {}
+
     getTap().notify({
       type: 'user.login',
       userId: telegramUserId,
-      message: 'User connected Spotify account',
+      message: `User connected Spotify account`,
+      meta: { spotifyName, spotifyEmail },
     });
 
     res.send(`<!DOCTYPE html>
