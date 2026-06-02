@@ -38,6 +38,10 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
+  // Populate tap username from DB
+  const user = await prisma.user.findUnique({ where: { telegramUserId }, select: { telegramUsername: true } });
+  if (user?.telegramUsername) getTap().setUsername(telegramUserId, user.telegramUsername);
+
   (req as AuthenticatedRequest).spotifyToken = accessToken;
   (req as AuthenticatedRequest).telegramUserId = telegramUserId;
   next();

@@ -25,12 +25,19 @@ export function createBot() {
   const token = env('TELEGRAM_BOT_TOKEN');
   const bot = new Bot(token);
 
-  // Register username for all tap notifications
+  // Register username for all tap notifications and persist to DB
   bot.use(async (ctx, next) => {
     if (ctx.from) {
       const userId = ctx.from.id.toString();
       const username = ctx.from.username || ctx.from.first_name;
-      if (username) getTap().setUsername(userId, username);
+      if (username) {
+        getTap().setUsername(userId, username);
+        // Persist to DB (best-effort, don't block)
+        prisma.user.updateMany({
+          where: { telegramUserId: userId },
+          data: { telegramUsername: username },
+        }).catch(() => {});
+      }
     }
     await next();
   });

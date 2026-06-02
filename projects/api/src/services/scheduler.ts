@@ -58,6 +58,10 @@ export async function processScheduledUpdates() {
 async function updatePlaylist(playlist: any): Promise<boolean> {
   const { id, spotifyPlaylistId, artistIds, trackCount, user } = playlist;
   const telegramUserId = user.telegramUserId;
+  const username = user.telegramUsername;
+
+  // Populate tap username cache from DB
+  if (username) getTap().setUsername(telegramUserId, username);
 
   try {
     // Get a valid access token (auto-refreshes if expired)
