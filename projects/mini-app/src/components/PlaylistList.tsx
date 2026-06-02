@@ -3,7 +3,7 @@ import type { Playlist } from '../lib/types';
 import { fetchPlaylists, updatePlaylist, deletePlaylist } from '../lib/api';
 import { RefreshIcon, MusicIcon, MinusIcon, SearchIcon } from './Icons';
 import { useToast } from '../hooks/useToast';
-import { ConfirmDialog, LoadingState, ErrorState } from './shared';
+import { ConfirmDialog, ErrorState, PlaylistListSkeleton } from './shared';
 import type { ConfirmDialogData } from './shared';
 
 interface PlaylistListProps {
@@ -83,7 +83,7 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
   );
 
   if (loading) {
-    return <LoadingState message="Loading playlists..." />;
+    return <PlaylistListSkeleton />;
   }
 
   if (error) {

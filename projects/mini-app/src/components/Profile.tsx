@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { UserProfile } from '../lib/types';
 import { fetchProfile, logout } from '../lib/api';
-import { LoadingState, ErrorState } from './shared';
+import { ErrorState, ProfileSkeleton } from './shared';
 
 interface ProfileProps {
   onProfileLoaded: () => void;
@@ -37,7 +37,7 @@ export function Profile({ onProfileLoaded, onLogout }: ProfileProps) {
   }
 
   if (!profile) {
-    return <LoadingState message="Loading profile..." />;
+    return <ProfileSkeleton />;
   }
 
   return (

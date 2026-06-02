@@ -20,8 +20,8 @@ import {
   WeightValidation,
   PageHeader,
   StatusBar,
-  LoadingState,
   ErrorState,
+  PlaylistDetailSkeleton,
 } from './shared';
 
 interface PlaylistDetailProps {
@@ -262,11 +262,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
-        <LoadingState />
-      </div>
-    );
+    return <PlaylistDetailSkeleton />;
   }
 
   if (!playlist) {
