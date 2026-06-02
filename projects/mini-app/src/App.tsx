@@ -77,7 +77,7 @@ export default function App() {
       </header>
 
       <main>
-        <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} />
+        <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} onCreateClick={() => setView('create')} />
       </main>
 
       {/* Floating create button */}

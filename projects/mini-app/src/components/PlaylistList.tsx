@@ -8,9 +8,10 @@ import type { ConfirmDialogData } from './shared';
 
 interface PlaylistListProps {
   onPlaylistClick: (playlistId: string) => void;
+  onCreateClick?: () => void;
 }
 
-export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
+export function PlaylistList({ onPlaylistClick, onCreateClick }: PlaylistListProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,9 +106,25 @@ export function PlaylistList({ onPlaylistClick }: PlaylistListProps) {
       </div>
 
       {filteredPlaylists.length === 0 ? (
-        <p className="text-[#B3B3B3] text-center py-4">
-          {searchQuery ? 'No playlists match your search.' : 'No playlists found.'}
-        </p>
+        searchQuery ? (
+          <p className="text-[#B3B3B3] text-center py-4">No playlists match your search.</p>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 px-6">
+            <div className="text-6xl mb-4">🍺</div>
+            <h2 className="text-xl font-bold text-white mb-2">No playlists yet</h2>
+            <p className="text-[#B3B3B3] text-center text-sm mb-6 max-w-[240px]">
+              Brew your first playlist from your favorite artists — fresh tracks, automatically updated.
+            </p>
+            {onCreateClick && (
+              <button
+                onClick={onCreateClick}
+                className="px-6 py-3 bg-[#1DB954] hover:bg-[#1ED760] text-black font-bold rounded-full text-sm"
+              >
+                Create Your First Playlist
+              </button>
+            )}
+          </div>
+        )
       ) : (
         filteredPlaylists.map((playlist) => (
           <div
