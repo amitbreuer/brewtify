@@ -6,8 +6,9 @@ import {
   updatePlaylist,
   fetchPlaylistSettings,
   updatePlaylistSettings,
+  renamePlaylist,
 } from '../lib/api';
-import { MusicIcon, MinusIcon, RefreshIcon } from './Icons';
+import { MusicIcon, MinusIcon, RefreshIcon, CheckIcon, CloseIcon, PencilIcon } from './Icons';
 import { TRACK_OPTIONS, SCHEDULE_OPTIONS } from '../lib/constants';
 import { useFollowedArtists } from '../hooks/useFollowedArtists';
 import { useArtistWeights } from '../hooks/useArtistWeights';
@@ -68,6 +69,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [status, setStatus] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const {
     filteredArtists: filteredAllArtists,
@@ -242,6 +245,22 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     }
   };
 
+  const handleRename = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed || !playlist || trimmed === playlist.name) {
+      setEditingName(false);
+      return;
+    }
+    try {
+      await renamePlaylist(playlistId, trimmed);
+      setPlaylist({ ...playlist, name: trimmed });
+      setEditingName(false);
+      setStatus('✅ Playlist renamed!');
+    } catch (err: any) {
+      setStatus(`❌ ${err.message}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#121212] text-white flex items-center justify-center">
@@ -263,17 +282,40 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   return (
     <div className="min-h-screen bg-[#121212] text-white flex flex-col">
       <PageHeader
-        title={playlist.name}
+        title={
+          editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false); }}
+                className="bg-[#282828] text-white text-sm font-semibold px-2 py-1 rounded border border-[#535353] focus:border-[#1DB954] outline-none w-40"
+                autoFocus
+                maxLength={100}
+              />
+              <button onClick={handleRename} className="text-[#1DB954]"><CheckIcon size={18} /></button>
+              <button onClick={() => setEditingName(false)} className="text-[#B3B3B3]"><CloseIcon size={18} /></button>
+            </div>
+          ) : (
+            <span onClick={() => { setNameInput(playlist.name); setEditingName(true); }} className="cursor-pointer flex items-center gap-1.5">
+              {playlist.name}
+              <PencilIcon size={16} className="text-[#B3B3B3] shrink-0" />
+            </span>
+          )
+        }
         onBack={onBack}
         rightContent={
-          <a
-            href={playlist.external_urls.spotify}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#1DB954] text-sm font-medium"
-          >
-            Open in Spotify ↗
-          </a>
+          !editingName ? (
+            <a
+              href={playlist.external_urls.spotify}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#1DB954] text-sm font-medium whitespace-nowrap"
+            >
+              Open in Spotify ↗
+            </a>
+          ) : undefined
         }
       />
 

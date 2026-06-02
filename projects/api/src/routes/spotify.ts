@@ -301,6 +301,48 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
   }
 });
 
+// PATCH /api/playlists/:playlistId — rename a playlist on Spotify and in DB
+spotifyRoutes.patch('/api/playlists/:playlistId', async (req: Request, res: Response) => {
+  try {
+    const token = (req as AuthenticatedRequest).spotifyToken;
+    const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
+    const spotifyPlaylistId = param(req, 'playlistId');
+    const { name } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    if (name.length > 100) {
+      res.status(400).json({ error: 'Playlist name must be 100 characters or less' });
+      return;
+    }
+
+    await spotifyService.updatePlaylistDetails(token, spotifyPlaylistId, { name: name.trim() });
+
+    // Update in DB if managed
+    const user = await prisma.user.findUnique({ where: { telegramUserId } });
+    if (user) {
+      const dbPlaylist = await prisma.playlist.findFirst({
+        where: { userId: user.id, spotifyPlaylistId },
+      });
+      if (dbPlaylist) {
+        await prisma.playlist.update({
+          where: { id: dbPlaylist.id },
+          data: { name: name.trim() },
+        });
+      }
+    }
+
+    log.info('Playlist renamed', { spotifyPlaylistId, name: name.trim() });
+    res.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to rename playlist', { playlistId: param(req, 'playlistId'), error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
 // DELETE /api/playlists/:playlistId — unfollow a playlist
 spotifyRoutes.delete('/api/playlists/:playlistId', async (req: Request, res: Response) => {
   try {

@@ -95,6 +95,13 @@ export async function deletePlaylist(playlistId: string): Promise<void> {
   await fetchAPI(`/api/playlists/${playlistId}`, { method: 'DELETE' });
 }
 
+export async function renamePlaylist(playlistId: string, name: string): Promise<void> {
+  await fetchAPI(`/api/playlists/${playlistId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
 export interface PlaylistSettings {
   managed: boolean;
   artistIds?: string[];
