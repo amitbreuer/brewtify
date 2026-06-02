@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Artist, Track, UserProfile } from '../lib/types';
 import {
   fetchAllArtistTracks,
   fetchProfile,
   createPlaylist,
   addTracksToPlaylist,
+  fetchPlaylists,
 } from '../lib/api';
 import { MinusIcon } from './Icons';
 import { TRACK_OPTIONS, SCHEDULE_OPTIONS } from '../lib/constants';
@@ -33,6 +34,15 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [schedule, setSchedule] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    fetchPlaylists().then((data) => {
+      const managedCount = data.items.filter((p: any) => p.managed).length;
+      setPlaylistName(`Artists Mix #${managedCount + 1}`);
+    }).catch(() => {
+      setPlaylistName('Artists Mix #1');
+    });
+  }, []);
 
   const artistIds = Array.from(selectedArtists.keys());
 
