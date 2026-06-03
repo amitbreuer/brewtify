@@ -322,9 +322,9 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
       <div className="flex-1 overflow-y-auto p-4 pb-28 flex flex-col gap-5">
         {/* Playlist info */}
         <div className="flex items-center gap-4">
-          {playlist.images[0] ? (
+          {playlist.images?.[0] ? (
             <img
-              src={playlist.images[0].url}
+              src={playlist.images![0].url}
               alt={playlist.name}
               className="w-20 h-20 rounded-lg object-cover"
             />

@@ -132,7 +132,7 @@ export function PlaylistList({ onPlaylistClick, onCreateClick }: PlaylistListPro
             onClick={() => onPlaylistClick(playlist.id)}
             className="flex items-center gap-3 p-3 bg-[#181818] hover:bg-[#282828] rounded-lg transition-colors cursor-pointer"
           >
-            {playlist.images[0] ? (
+            {playlist.images?.[0] ? (
               <img
                 src={playlist.images[0].url}
                 alt={playlist.name}

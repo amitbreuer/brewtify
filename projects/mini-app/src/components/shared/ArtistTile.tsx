@@ -29,7 +29,7 @@ export function ArtistTile({ artist, isSelected, onClick, size = 'md' }: ArtistT
           : `bg-[#181818] hover:bg-[#282828]`
       }`}
     >
-      {artist.images[0] ? (
+      {artist.images?.[0] ? (
         <img
           src={artist.images[0].url}
           alt={artist.name}

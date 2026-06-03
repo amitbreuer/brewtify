@@ -46,13 +46,21 @@ export function createServer() {
 
   // Serve Telegram Mini App static files
   const miniAppPath = path.join(__dirname, '../../mini-app/dist');
-  app.use('/app', express.static(miniAppPath));
+  app.use('/app', express.static(miniAppPath, {
+    etag: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  }));
   app.get('/app/{*splat}', (req, res) => {
     // Only serve index.html for non-asset routes (SPA fallback)
     if (req.path.match(/\.\w+$/)) {
       res.status(404).end();
       return;
     }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(miniAppPath, 'index.html'));
   });
 

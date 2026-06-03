@@ -42,7 +42,7 @@ export function Profile({ onProfileLoaded, onLogout }: ProfileProps) {
 
   return (
     <div className="flex items-center gap-3 p-4">
-      {profile.images[0] && (
+      {profile.images?.[0] && (
         <img
           src={profile.images[0].url}
           alt={profile.display_name}
