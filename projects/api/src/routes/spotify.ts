@@ -312,7 +312,7 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
     getTap().notify({
       type: 'playlist.update',
       userId: telegramUserId,
-      message: `Manually refreshed playlist`,
+      message: `Manually refreshed "${dbPlaylist.name}"`,
       meta: { spotifyPlaylistId, trackCount: uris.length, artistCount: artistIds.length },
     });
     res.json({ success: true, trackCount: uris.length, artistCount: artistIds.length });

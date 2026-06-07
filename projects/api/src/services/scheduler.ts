@@ -56,7 +56,7 @@ export async function processScheduledUpdates() {
 }
 
 async function updatePlaylist(playlist: any): Promise<boolean> {
-  const { id, spotifyPlaylistId, artistIds, trackCount, user } = playlist;
+  const { id, spotifyPlaylistId, artistIds, trackCount, user, name: playlistName } = playlist;
   const telegramUserId = user.telegramUserId;
   const username = user.telegramUsername;
 
@@ -71,7 +71,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
       getTap().notify({
         type: 'error.auth',
         userId: telegramUserId,
-        message: `Token expired for scheduled playlist`,
+        message: `Token expired for "${playlistName}"`,
         meta: { spotifyPlaylistId },
       });
       return false;
@@ -89,7 +89,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
       getTap().notify({
         type: 'cron.failure',
         userId: telegramUserId,
-        message: `No tracks found for playlist`,
+        message: `No tracks found for "${playlistName}"`,
         meta: { spotifyPlaylistId },
       });
       return false;
@@ -121,7 +121,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
     getTap().notify({
       type: 'cron.success',
       userId: telegramUserId,
-      message: `Playlist updated (${selectedTracks.length} tracks)`,
+      message: `Updated "${playlistName}" (${selectedTracks.length} tracks)`,
       meta: { spotifyPlaylistId, trackCount: selectedTracks.length },
     });
     return true;
@@ -144,7 +144,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
     getTap().notify({
       type: 'cron.failure',
       userId: telegramUserId,
-      message: `Failed to update playlist: ${err.message}`,
+      message: `Failed to update "${playlistName}": ${err.message}`,
       meta: { spotifyPlaylistId, failureCount: newFailureCount },
     });
     return false;
