@@ -165,6 +165,7 @@ async function markFailed(playlistId: string, status: string, error: string) {
 /**
  * Calculate the next update time based on the schedule string.
  * - 'daily' → tomorrow at 00:00 UTC
+ * - 'weekly' → 7 days from now at 00:00 UTC
  * - 'weekly:N' → next day N (0=Sun..6=Sat) at 00:00 UTC
  */
 export function calculateNextUpdate(schedule: string): Date {
@@ -173,6 +174,10 @@ export function calculateNextUpdate(schedule: string): Date {
 
   if (schedule === 'daily') {
     return tomorrow;
+  }
+
+  if (schedule === 'weekly') {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7));
   }
 
   if (schedule.startsWith('weekly:')) {
