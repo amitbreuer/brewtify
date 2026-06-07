@@ -68,6 +68,7 @@ export interface CreatePlaylistParams {
   trackCount: number;
   weights?: Record<string, number>;
   eraPreference?: number;
+  eraPreferences?: Record<string, number>;
   schedule?: string | null;
 }
 
@@ -108,6 +109,7 @@ export interface PlaylistSettings {
   trackCount?: number;
   weights?: Record<string, number> | null;
   eraPreference?: number;
+  eraPreferences?: Record<string, number> | null;
   schedule?: string | null;
   status?: string;
   lastUpdatedAt?: string | null;
@@ -120,7 +122,7 @@ export async function fetchPlaylistSettings(playlistId: string): Promise<Playlis
 
 export async function updatePlaylistSettings(
   playlistId: string,
-  settings: { artistIds?: string[]; trackCount?: number; weights?: Record<string, number> | null; eraPreference?: number; schedule?: string | null }
+  settings: { artistIds?: string[]; trackCount?: number; weights?: Record<string, number> | null; eraPreference?: number; eraPreferences?: Record<string, number> | null; schedule?: string | null }
 ): Promise<void> {
   await fetchAPI(`/api/playlists/${playlistId}/settings`, {
     method: 'PATCH',

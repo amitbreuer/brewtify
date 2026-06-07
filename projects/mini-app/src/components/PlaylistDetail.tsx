@@ -31,7 +31,7 @@ interface PlaylistDetailProps {
 interface PlaylistSettings {
   artistIds: string[];
   weights: Map<string, number>;
-  era: number;
+  eraPreferences: Map<string, number>;
   count: number;
   schedule: string | null;
   lastUpdatedAt: string | null;
@@ -61,13 +61,14 @@ function formatScheduleDate(isoDate: string): string {
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), era: 50, count: 100, schedule: null, lastUpdatedAt: null, nextUpdateAt: null });
+  const [settings, setSettings] = useState<PlaylistSettings>({ artistIds: [], weights: new Map(), eraPreferences: new Map(), count: 100, schedule: null, lastUpdatedAt: null, nextUpdateAt: null });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionResult, setActionResult] = useState<'success' | 'error' | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [customized, setCustomized] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
@@ -132,7 +133,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         const parsed: PlaylistSettings = {
           artistIds: dbSettings.artistIds,
           weights,
-          era: dbSettings.eraPreference ?? 50,
+          eraPreferences: new Map(Object.entries(dbSettings.eraPreferences ?? {}).map(([k, v]) => [k, v as number])),
           count: dbSettings.trackCount ?? 100,
           schedule: dbSettings.schedule ?? null,
           lastUpdatedAt: dbSettings.lastUpdatedAt ?? null,
@@ -140,6 +141,10 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         };
         setSettings(parsed);
         syncWeightsFromSettings(weights);
+
+        // Detect if customization was previously applied
+        const hasCustomEra = parsed.eraPreferences.size > 0 && Array.from(parsed.eraPreferences.values()).some(v => v !== 50);
+        setCustomized(weights.size > 0 || hasCustomEra);
 
         if (parsed.artistIds.length > 0) {
           const artistData = await fetchArtistsByIds(parsed.artistIds);
@@ -203,7 +208,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         artistIds: settings.artistIds,
         trackCount: settings.count,
         weights: weightsObj,
-        eraPreference: settings.era,
+        eraPreferences: Object.fromEntries(settings.eraPreferences),
         schedule: settings.schedule,
       });
       setDirty(false);
@@ -229,7 +234,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         artistIds: settings.artistIds,
         trackCount: settings.count,
         weights: weightsObj,
-        eraPreference: settings.era,
+        eraPreferences: Object.fromEntries(settings.eraPreferences),
         schedule: settings.schedule,
       });
       setDirty(false);
@@ -453,32 +458,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                   <span className="text-white text-sm">{settings.count}</span>
                 )}
               </div>
-
-              {/* Era preference */}
-              <div>
-                <label className="text-xs text-[#B3B3B3] mb-1.5 block">Era preference</label>
-                {editMode ? (
-                  <>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={settings.era}
-                      onChange={(e) => { setSettings({ ...settings, era: Number(e.target.value) }); setDirty(true); }}
-                      className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-[#535353] accent-[#1DB954]"
-                    />
-                    <div className="flex justify-between text-xs text-[#B3B3B3] mt-1">
-                      <span>Older</span>
-                      <span className={settings.era === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
-                      <span>Newer</span>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-white text-sm">
-                    {settings.era < 30 ? 'Older' : settings.era > 70 ? 'Newer' : 'Mixed'}
-                  </span>
-                )}
-              </div>
             </div>
 
             {/* Artists section */}
@@ -488,24 +467,24 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                   Artists ({artists.length})
                 </span>
                 {editMode && (
-                  hasCustomWeights ? (
+                  customized ? (
                     <button
-                      onClick={resetToEqual}
+                      onClick={() => { resetToEqual(); setCustomized(false); setDirty(true); }}
                       className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                     >
-                      Reset to equal
+                      Reset defaults
                     </button>
                   ) : (
                     <button
-                      onClick={enableCustomWeights}
+                      onClick={() => { enableCustomWeights(); setCustomized(true); setDirty(true); }}
                       className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                     >
-                      Customize %
+                      Customize
                     </button>
                   )
                 )}
               </div>
-              {editMode && hasCustomWeights && (
+              {editMode && customized && hasCustomWeights && (
                 <WeightValidation totalWeight={totalWeight} isValid={isWeightValid} />
               )}
 
@@ -514,41 +493,61 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 {artists.map((artist) => (
                   <div
                     key={artist.id}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#282828] rounded-xl"
+                    className="flex flex-col gap-1.5 px-3 py-2 bg-[#282828] rounded-xl"
                   >
-                    {artist.images?.[0] && (
-                      <img
-                        src={artist.images[0].url}
-                        alt={artist.name}
-                        className="w-6 h-6 rounded-full object-cover"
+                    <div className="flex items-center gap-2">
+                      {artist.images?.[0] && (
+                        <img
+                          src={artist.images[0].url}
+                          alt={artist.name}
+                          className="w-6 h-6 rounded-full object-cover"
+                        />
+                      )}
+                      <span className="text-xs text-white flex-1 truncate">{artist.name}</span>
+                      {editMode && customized && (
+                        <WeightControl
+                          value={weightMap.get(artist.id)}
+                          onChange={(v) => setWeight(artist.id, v)}
+                          size="sm"
+                        />
+                      )}
+                      {!customized && (
+                        <span className="text-xs text-[#535353]">
+                          {displayPercentages.get(artist.id) || 0}%
+                        </span>
+                      )}
+                      {editMode && (
+                        <button
+                          onClick={() => toggleArtist(artist)}
+                          className="text-[#B3B3B3] hover:text-red-400 ml-1"
+                        >
+                          <MinusIcon size={14} />
+                        </button>
+                      )}
+                    </div>
+                    {/* Per-artist era slider — always visible, disabled until customized in edit mode */}
+                    <div className={!(editMode && customized) ? 'opacity-50' : ''}>
+                      <label className="text-[10px] text-[#B3B3B3] mb-0.5 block text-center">Era</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        disabled={!(editMode && customized)}
+                        value={settings.eraPreferences.get(artist.id) ?? 50}
+                        onChange={(e) => {
+                          const newEra = new Map(settings.eraPreferences);
+                          newEra.set(artist.id, Number(e.target.value));
+                          setSettings({ ...settings, eraPreferences: newEra });
+                          setDirty(true);
+                        }}
+                        className={`w-full h-1.5 rounded-full appearance-none bg-[#535353] accent-[#1DB954] ${editMode && customized ? 'cursor-pointer' : 'cursor-not-allowed'}`}
                       />
-                    )}
-                    <span className="text-xs text-white flex-1 truncate">{artist.name}</span>
-                    {editMode && hasCustomWeights && (
-                      <WeightControl
-                        value={weightMap.get(artist.id)}
-                        onChange={(v) => setWeight(artist.id, v)}
-                        size="sm"
-                      />
-                    )}
-                    {!editMode && (
-                      <span className="text-xs text-[#535353]">
-                        {displayPercentages.get(artist.id) || 0}%
-                      </span>
-                    )}
-                    {editMode && !hasCustomWeights && (
-                      <span className="text-xs text-[#535353]">
-                        {displayPercentages.get(artist.id) || 0}%
-                      </span>
-                    )}
-                    {editMode && (
-                      <button
-                        onClick={() => toggleArtist(artist)}
-                        className="text-[#B3B3B3] hover:text-red-400 ml-1"
-                      >
-                        <MinusIcon size={14} />
-                      </button>
-                    )}
+                      <div className="flex justify-between text-[10px] text-[#B3B3B3] mt-0.5">
+                        <span>Older</span>
+                        <span className={(settings.eraPreferences.get(artist.id) ?? 50) === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
+                        <span>Newer</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

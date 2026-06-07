@@ -163,7 +163,7 @@ spotifyRoutes.get('/api/artists/:artistId/tracks', async (req: Request, res: Res
 // POST /api/playlists — create a new playlist and save settings to DB
 spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
   try {
-    const { userId, name, description, artistIds, trackCount, weights, eraPreference, schedule } = req.body;
+    const { userId, name, description, artistIds, trackCount, weights, eraPreference, eraPreferences, schedule } = req.body;
     if (!userId || !name) {
       res.status(400).json({ error: 'userId and name are required' });
       return;
@@ -196,6 +196,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           trackCount: trackCount || 100,
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
+          eraPreferences: eraPreferences || null,
           schedule: schedule || null,
           nextUpdateAt,
         },
@@ -205,6 +206,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           trackCount: trackCount || 100,
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
+          eraPreferences: eraPreferences || null,
           schedule: schedule || null,
           nextUpdateAt,
         },
@@ -404,6 +406,7 @@ spotifyRoutes.get('/api/playlists/:playlistId/settings', async (req: Request, re
       trackCount: dbPlaylist.trackCount,
       weights: dbPlaylist.weights,
       eraPreference: dbPlaylist.eraPreference,
+      eraPreferences: dbPlaylist.eraPreferences,
       schedule: dbPlaylist.schedule,
       status: dbPlaylist.status,
       lastUpdatedAt: dbPlaylist.lastUpdatedAt,
@@ -421,7 +424,7 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
   try {
     const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
     const spotifyPlaylistId = param(req, 'playlistId');
-    const { artistIds, trackCount, weights, eraPreference, schedule } = req.body;
+    const { artistIds, trackCount, weights, eraPreference, eraPreferences, schedule } = req.body;
 
     const user = await prisma.user.findUnique({ where: { telegramUserId } });
     if (!user) {
@@ -448,6 +451,7 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
     if (trackCount !== undefined) updateData.trackCount = Math.min(Math.max(trackCount, 20), 200);
     if (weights !== undefined) updateData.weights = weights;
     if (eraPreference !== undefined) updateData.eraPreference = Math.min(Math.max(eraPreference, 0), 100);
+    if (eraPreferences !== undefined) updateData.eraPreferences = eraPreferences;
     if (schedule !== undefined) {
       updateData.schedule = schedule;
       if (schedule) {

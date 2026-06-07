@@ -29,10 +29,11 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
   const [selectedArtists, setSelectedArtists] = useState<Map<string, string>>(new Map());
   const [playlistName, setPlaylistName] = useState('');
   const [songCount, setSongCount] = useState(100);
-  const [eraPreference, setEraPreference] = useState(50);
+  const [eraPreferences, setEraPreferences] = useState<Map<string, number>>(new Map());
   const [schedule, setSchedule] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createResult, setCreateResult] = useState<'success' | 'error' | null>(null);
+  const [customized, setCustomized] = useState(false);
 
   useEffect(() => {
     fetchPlaylists().then((data) => {
@@ -76,6 +77,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
       if (next.has(artist.id)) {
         next.delete(artist.id);
         removeArtist(artist.id);
+        setEraPreferences((ep) => { const m = new Map(ep); m.delete(artist.id); return m; });
       } else {
         next.set(artist.id, artist.name);
       }
@@ -98,13 +100,16 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         artistIds.forEach((id) => { weights![id] = displayPercentages.get(id) || 0; });
       }
 
+      const eraPreferencesObj: Record<string, number> = {};
+      artistIds.forEach((id) => { eraPreferencesObj[id] = eraPreferences.get(id) ?? 50; });
+
       const playlist = await createPlaylist({
         userId: profile.id,
         name: playlistName,
         artistIds,
         trackCount: songCount,
         weights,
-        eraPreference,
+        eraPreferences: eraPreferencesObj,
         schedule,
       });
 
@@ -147,12 +152,13 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           .sort((a, b) => (a.album.release_date! > b.album.release_date! ? 1 : -1));
         const undated = tracks.filter((t) => !t.album?.release_date);
 
+        const artistEra = eraPreferences.get(artistId) ?? 50;
         let artistSelected: Track[];
-        if (eraPreference === 50 || sorted.length === 0) {
+        if (artistEra === 50 || sorted.length === 0) {
           const shuffled = [...tracks].sort(() => Math.random() - 0.5);
           artistSelected = shuffled.slice(0, quota);
         } else {
-          const bias = eraPreference / 100;
+          const bias = artistEra / 100;
           const weighted = sorted.map((track, idx) => {
             const position = sorted.length > 1 ? idx / (sorted.length - 1) : 0.5;
             const weight = Math.pow(bias < 0.5 ? (1 - position) : position, 2 + Math.abs(bias - 0.5) * 6);
@@ -218,24 +224,6 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           </div>
         </div>
 
-        {/* Era preference */}
-        <div>
-          <label className="text-sm text-[#B3B3B3] mb-2 block">Era preference</label>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={eraPreference}
-            onChange={(e) => setEraPreference(Number(e.target.value))}
-            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-[#535353] accent-[#1DB954]"
-          />
-          <div className="flex justify-between text-xs text-[#B3B3B3] mt-1">
-            <span>Older</span>
-            <span className={eraPreference === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
-            <span>Newer</span>
-          </div>
-        </div>
-
         {/* Auto-refresh schedule */}
         <div>
           <label className="text-sm text-[#B3B3B3] mb-2 block">Auto-refresh schedule</label>
@@ -256,56 +244,76 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           </div>
         </div>
 
-        {/* Selected artists with weights */}
+        {/* Selected artists with weights and era */}
         {selectedArtists.size > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm text-[#B3B3B3]">
                 Selected ({selectedArtists.size})
               </label>
-              {hasCustomWeights ? (
+              {customized ? (
                 <button
-                  onClick={resetToEqual}
+                  onClick={() => { resetToEqual(); setCustomized(false); }}
                   className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                 >
-                  Reset to equal
+                  Reset defaults
                 </button>
               ) : (
                 <button
-                  onClick={enableCustomWeights}
+                  onClick={() => { enableCustomWeights(); setCustomized(true); }}
                   className="text-xs text-[#1DB954] hover:text-[#1ED760]"
                 >
-                  Customize %
+                  Customize
                 </button>
               )}
             </div>
-            {hasCustomWeights && (
+            {customized && hasCustomWeights && (
               <WeightValidation totalWeight={totalWeight} isValid={isWeightValid} />
             )}
             <div className="flex flex-col gap-2">
               {Array.from(selectedArtists.entries()).map(([id, name]) => (
                 <div
                   key={id}
-                  className="flex items-center gap-2 px-3 py-2 bg-[#181818] rounded-xl"
+                  className="flex flex-col gap-1.5 px-3 py-2 bg-[#181818] rounded-xl"
                 >
-                  <span className="text-sm text-white flex-1 truncate">{name}</span>
-                  {hasCustomWeights && (
-                    <WeightControl
-                      value={artistWeights.get(id)}
-                      onChange={(v) => setWeight(id, v)}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-white flex-1 truncate">{name}</span>
+                    {customized && (
+                      <WeightControl
+                        value={artistWeights.get(id)}
+                        onChange={(v) => setWeight(id, v)}
+                      />
+                    )}
+                    {!customized && (
+                      <span className="text-xs text-[#535353]">
+                        {displayPercentages.get(id) || 0}%
+                      </span>
+                    )}
+                    <button
+                      onClick={() => toggleArtist({ id, name } as Artist)}
+                      className="text-[#B3B3B3] hover:text-red-400 ml-1"
+                    >
+                      <MinusIcon size={14} />
+                    </button>
+                  </div>
+                  {/* Per-artist era slider — always visible, disabled until customized */}
+                  <div className={!customized ? 'opacity-50' : ''}>
+                    <label className="text-[10px] text-[#B3B3B3] mb-0.5 block text-center">Era</label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      disabled={!customized}
+                      value={eraPreferences.get(id) ?? 50}
+                      onChange={(e) => setEraPreferences((prev) => new Map(prev).set(id, Number(e.target.value)))}
+                      className={`w-full h-1.5 rounded-full appearance-none bg-[#535353] accent-[#1DB954] ${customized ? 'cursor-pointer' : 'cursor-not-allowed'}`}
                     />
-                  )}
-                  {!hasCustomWeights && (
-                    <span className="text-xs text-[#535353]">
-                      {displayPercentages.get(id) || 0}%
-                    </span>
-                  )}
-                  <button
-                    onClick={() => toggleArtist({ id, name } as Artist)}
-                    className="text-[#B3B3B3] hover:text-red-400 ml-1"
-                  >
-                    <MinusIcon size={14} />
-                  </button>
+                    <div className="flex justify-between text-[10px] text-[#B3B3B3] mt-0.5">
+                      <span>Older</span>
+                      <span className={(eraPreferences.get(id) ?? 50) === 50 ? 'text-[#1DB954]' : ''}>Mixed</span>
+                      <span>Newer</span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
