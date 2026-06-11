@@ -21,8 +21,8 @@ export function ArtistsPage() {
   const [loadingSuggested, setLoadingSuggested] = useState(true);
   const [followingState, setFollowingState] = useState<Map<string, boolean>>(new Map());
   const [togglingFollow, setTogglingFollow] = useState<Set<string>>(new Set());
-  const [followedGenreFilter, setFollowedGenreFilter] = useState('All genres');
-  const [suggestedGenreFilter, setSuggestedGenreFilter] = useState('All genres');
+  const [followedGenreFilter, setFollowedGenreFilter] = useState<string[]>([]);
+  const [suggestedGenreFilter, setSuggestedGenreFilter] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Load followed artists
@@ -106,8 +106,8 @@ export function ArtistsPage() {
   const handleRefreshSuggested = async () => {
     setLoadingSuggested(true);
     try {
-      const genre = suggestedGenreFilter === 'All genres' ? undefined : suggestedGenreFilter;
-      const data = await fetchSuggestedArtists(genre);
+      const genres = suggestedGenreFilter.length > 0 ? suggestedGenreFilter : undefined;
+      const data = await fetchSuggestedArtists(genres);
       setSuggestedArtists(data.items);
     } catch (err) {
       console.error(err);
@@ -116,11 +116,11 @@ export function ArtistsPage() {
     }
   };
 
-  const handleSuggestedGenreChange = async (genre: string) => {
-    setSuggestedGenreFilter(genre);
+  const handleSuggestedGenreChange = async (genres: string[]) => {
+    setSuggestedGenreFilter(genres);
     setLoadingSuggested(true);
     try {
-      const genreParam = genre === 'All genres' ? undefined : genre;
+      const genreParam = genres.length > 0 ? genres : undefined;
       const data = await fetchSuggestedArtists(genreParam);
       setSuggestedArtists(data.items);
     } catch (err) {
@@ -175,10 +175,10 @@ export function ArtistsPage() {
     new Set(followedArtists.flatMap((a) => a.genres || []))
   ).sort();
 
-  // Filter followed artists by selected genre
-  const filteredFollowed = followedGenreFilter === 'All genres'
+  // Filter followed artists by selected genres
+  const filteredFollowed = followedGenreFilter.length === 0
     ? followedArtists
-    : followedArtists.filter((a) => a.genres?.includes(followedGenreFilter));
+    : followedArtists.filter((a) => a.genres?.some((g) => followedGenreFilter.includes(g)));
 
   return (
     <div className="bg-[#121212] text-white pb-6 overflow-y-hidden">
@@ -212,7 +212,7 @@ export function ArtistsPage() {
             {searching ? (
               <ArtistListSkeleton count={4} />
             ) : searchResults.length === 0 ? (
-              <p className="text-[#B3B3B3] text-sm">No artists found.</p>
+              <p className="text-[#B3B3B3] text-sm">No results for that search. Try a different name or spelling.</p>
             ) : (
               <div className="space-y-2">
                 {searchResults.map((artist) => (
@@ -254,7 +254,7 @@ export function ArtistsPage() {
                 <HorizontalSkeleton />
               ) : followedArtists.length === 0 ? (
                 <p className="text-[#B3B3B3] text-sm px-4">
-                  You're not following any artists yet. Use the search above to find artists to follow.
+                  You haven't followed any artists yet. Search above to discover and follow artists you love.
                 </p>
               ) : (
                 <div className="flex gap-3 overflow-x-auto px-4 scrollbar-hide">
@@ -295,8 +295,8 @@ export function ArtistsPage() {
               ) : suggestedArtists.length === 0 ? (
                 <p className="text-[#B3B3B3] text-sm px-4">
                   {followedArtists.length === 0
-                    ? 'Follow more artists to get personalized suggestions.'
-                    : 'No new suggestions found. Try following more artists to expand your recommendations.'}
+                    ? 'Follow some artists first and we\'ll suggest similar ones you might enjoy.'
+                    : 'We couldn\'t find new artists to suggest right now. Try refreshing or selecting a different genre.'}
                 </p>
               ) : (
                 <div className="flex gap-3 overflow-x-auto px-4 scrollbar-hide">
@@ -384,22 +384,25 @@ interface ArtistCardProps {
 }
 
 function ArtistCard({ artist, isFollowing, isToggling, onToggleFollow, showGenreLabels = false }: ArtistCardProps) {
+  const spotifyUrl = artist.external_urls?.spotify;
   return (
     <div className="flex flex-col items-center w-32 flex-shrink-0 bg-[#181818] rounded-xl p-3 gap-2 h-full">
-      {artist.images?.[0] ? (
-        <img
-          src={artist.images[artist.images.length > 1 ? 1 : 0]?.url || artist.images[0].url}
-          alt={artist.name}
-          className="w-16 h-16 rounded-full object-cover"
-        />
-      ) : (
-        <div className="w-16 h-16 rounded-full bg-[#282828] flex items-center justify-center">
-          <MicIcon size={24} className="text-[#B3B3B3]" />
-        </div>
-      )}
-      <p className="text-white text-xs font-medium text-center leading-tight line-clamp-2 w-full h-[30px]">
-        {artist.name}
-      </p>
+      <a href={spotifyUrl} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-2">
+        {artist.images?.[0] ? (
+          <img
+            src={artist.images[artist.images.length > 1 ? 1 : 0]?.url || artist.images[0].url}
+            alt={artist.name}
+            className="w-16 h-16 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-[#282828] flex items-center justify-center">
+            <MicIcon size={24} className="text-[#B3B3B3]" />
+          </div>
+        )}
+        <p className="text-white text-xs font-medium text-center leading-tight line-clamp-2 w-full h-[30px]">
+          {artist.name}
+        </p>
+      </a>
       <div className="flex flex-wrap justify-center gap-1 h-[30px] content-start mb-1">
         {showGenreLabels && (artist.matchedGenre ? (
           <span className="px-1.5 py-0.5 bg-[#282828] text-[#B3B3B3] text-[9px] rounded-full">
@@ -416,7 +419,7 @@ function ArtistCard({ artist, isFollowing, isToggling, onToggleFollow, showGenre
           ))
         ))}
       </div>
-      <div className="mt-auto flex flex-col items-center gap-2 w-full">
+      <div className="mt-auto w-full">
         <button
           onClick={onToggleFollow}
           disabled={isToggling}
@@ -428,14 +431,6 @@ function ArtistCard({ artist, isFollowing, isToggling, onToggleFollow, showGenre
         >
           {isToggling ? '...' : isFollowing ? 'Following' : 'Follow'}
         </button>
-        <a
-          href={artist.external_urls?.spotify}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[#1DB954] hover:text-[#1ED760]"
-        >
-          <SpotifyIcon size={16} />
-        </a>
       </div>
     </div>
   );
@@ -450,7 +445,6 @@ function HorizontalSkeleton() {
           <div className="h-[30px] w-16 bg-[#282828] rounded animate-pulse" />
           <div className="h-[30px] w-full bg-[#282828] rounded animate-pulse" />
           <div className="h-6 w-full bg-[#282828] rounded-full animate-pulse mt-auto" />
-          <div className="w-5 h-5 bg-[#282828] rounded-full animate-pulse" />
         </div>
       ))}
     </div>
@@ -466,20 +460,28 @@ function SpotifyIcon({ size = 20 }: { size?: number }) {
 }
 
 interface GenreChipsProps {
-  value: string;
+  value: string[];
   genres: string[];
-  onChange: (genre: string) => void;
+  onChange: (genres: string[]) => void;
 }
 
 function GenreChips({ value, genres, onChange }: GenreChipsProps) {
+  const handleToggle = (genre: string) => {
+    if (value.includes(genre)) {
+      onChange(value.filter((g) => g !== genre));
+    } else {
+      onChange([...value, genre]);
+    }
+  };
+
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 py-2.5 scrollbar-hide">
-      {['All genres', ...genres].map((genre) => (
+    <div className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-hide">
+      {genres.map((genre) => (
         <button
           key={genre}
-          onClick={() => onChange(value === genre && genre !== 'All genres' ? 'All genres' : genre)}
+          onClick={() => handleToggle(genre)}
           className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors shrink-0 ${
-            value === genre
+            value.includes(genre)
               ? 'bg-[#1DB954] text-black'
               : 'bg-[#282828] text-[#B3B3B3] hover:text-white border border-[#535353]'
           }`}

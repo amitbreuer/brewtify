@@ -132,7 +132,8 @@ spotifyRoutes.get('/api/artists/search', async (req: Request, res: Response) => 
 spotifyRoutes.get('/api/artists/suggested', async (req: Request, res: Response) => {
   try {
     const token = (req as AuthenticatedRequest).spotifyToken;
-    const genreFilter = req.query.genre as string | undefined;
+    const genreParam = req.query.genre as string | undefined;
+    const genreFilters = genreParam ? genreParam.split(',').map((g) => g.trim()).filter(Boolean) : [];
 
     // Fetch all followed artists
     const allFollowed: any[] = [];
@@ -154,19 +155,21 @@ spotifyRoutes.get('/api/artists/suggested', async (req: Request, res: Response) 
     const seenIds = new Set<string>();
     const candidates: any[] = [];
 
-    if (genreFilter) {
-      // Search a specific genre
-      try {
-        const results = await spotifyService.searchArtists(token, `genre:"${genreFilter}"`, 50);
-        for (const artist of results.items) {
-          if (!followedIds.has(artist.id) && !seenIds.has(artist.id)) {
-            seenIds.add(artist.id);
-            candidates.push({ ...artist, matchedGenre: genreFilter });
+    if (genreFilters.length > 0) {
+      // Search specific genres
+      for (const genre of genreFilters) {
+        try {
+          const results = await spotifyService.searchArtists(token, `genre:"${genre}"`, 50);
+          for (const artist of results.items) {
+            if (!followedIds.has(artist.id) && !seenIds.has(artist.id)) {
+              seenIds.add(artist.id);
+              candidates.push({ ...artist, matchedGenre: genre });
+            }
           }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          log.warn(`Failed to search artists for genre "${genre}"`, { genre, error: msg });
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        log.warn(`Failed to search artists for genre "${genreFilter}"`, { genre: genreFilter, error: msg });
       }
 
       // Sort by popularity, pick 10 randomly from top 30 (weighted by popularity)
