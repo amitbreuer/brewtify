@@ -21,6 +21,8 @@ export function ArtistsPage() {
   const [loadingSuggested, setLoadingSuggested] = useState(true);
   const [followingState, setFollowingState] = useState<Map<string, boolean>>(new Map());
   const [togglingFollow, setTogglingFollow] = useState<Set<string>>(new Set());
+  const [followedGenreFilter, setFollowedGenreFilter] = useState('All genres');
+  const [suggestedGenreFilter, setSuggestedGenreFilter] = useState('All genres');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Load followed artists
@@ -104,7 +106,22 @@ export function ArtistsPage() {
   const handleRefreshSuggested = async () => {
     setLoadingSuggested(true);
     try {
-      const data = await fetchSuggestedArtists();
+      const genre = suggestedGenreFilter === 'All genres' ? undefined : suggestedGenreFilter;
+      const data = await fetchSuggestedArtists(genre);
+      setSuggestedArtists(data.items);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingSuggested(false);
+    }
+  };
+
+  const handleSuggestedGenreChange = async (genre: string) => {
+    setSuggestedGenreFilter(genre);
+    setLoadingSuggested(true);
+    try {
+      const genreParam = genre === 'All genres' ? undefined : genre;
+      const data = await fetchSuggestedArtists(genreParam);
       setSuggestedArtists(data.items);
     } catch (err) {
       console.error(err);
@@ -153,18 +170,28 @@ export function ArtistsPage() {
 
   const showSearchResults = searchQuery.trim().length > 0;
 
+  // Compute genres from followed artists (used by both filters)
+  const followedGenres = Array.from(
+    new Set(followedArtists.flatMap((a) => a.genres || []))
+  ).sort();
+
+  // Filter followed artists by selected genre
+  const filteredFollowed = followedGenreFilter === 'All genres'
+    ? followedArtists
+    : followedArtists.filter((a) => a.genres?.includes(followedGenreFilter));
+
   return (
-    <div className="bg-[#121212] text-white pb-20">
+    <div className="bg-[#121212] text-white pb-6 overflow-y-hidden">
       {/* Search Bar */}
-      <div className="p-4">
+      <div className="px-4 pt-3 pb-2">
         <div className="relative">
-          <SearchIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B3B3B3]" />
+          <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B3B3B3]" />
           <input
             type="text"
             placeholder="Search for artists on Spotify..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-[#282828] border border-[#535353] rounded-xl text-white placeholder-[#535353] focus:outline-none focus:border-[#1DB954]"
+            className="w-full pl-9 pr-3 py-2.5 bg-[#282828] border border-[#535353] rounded-xl text-white text-sm placeholder-[#535353] focus:outline-none focus:border-[#1DB954]"
           />
           {searchQuery && (
             <button
@@ -177,7 +204,7 @@ export function ArtistsPage() {
         </div>
       </div>
 
-      <main className="py-4 space-y-6">
+      <main className="py-1 space-y-3">
         {/* Search Results */}
         {showSearchResults && (
           <section className="px-4">
@@ -206,14 +233,23 @@ export function ArtistsPage() {
         {!showSearchResults && (
           <>
             <section>
-              <h2 className="text-lg font-bold mb-3 px-4">
-                Your Artists
-                {!loadingFollowed && (
-                  <span className="text-sm font-normal text-[#B3B3B3] ml-2">
-                    ({followedArtists.length})
-                  </span>
-                )}
-              </h2>
+              <div className="flex items-center justify-between px-4">
+                <h2 className="text-base font-bold">
+                  Your Artists
+                  {!loadingFollowed && (
+                    <span className="text-sm font-normal text-[#B3B3B3] ml-2">
+                      ({followedArtists.length})
+                    </span>
+                  )}
+                </h2>
+              </div>
+              {!loadingFollowed && followedArtists.length > 0 && (
+                <GenreChips
+                  value={followedGenreFilter}
+                  genres={followedGenres}
+                  onChange={setFollowedGenreFilter}
+                />
+              )}
               {loadingFollowed ? (
                 <HorizontalSkeleton />
               ) : followedArtists.length === 0 ? (
@@ -221,8 +257,8 @@ export function ArtistsPage() {
                   You're not following any artists yet. Use the search above to find artists to follow.
                 </p>
               ) : (
-                <div className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-hide">
-                  {followedArtists.map((artist) => (
+                <div className="flex gap-3 overflow-x-auto px-4 scrollbar-hide">
+                  {filteredFollowed.map((artist) => (
                     <ArtistCard
                       key={artist.id}
                       artist={artist}
@@ -238,8 +274,8 @@ export function ArtistsPage() {
 
             {/* Suggested Artists */}
             <section>
-              <div className="flex items-center justify-between mb-3 px-4">
-                <h2 className="text-lg font-bold">Suggested Artists</h2>
+              <div className="flex items-center justify-between px-4">
+                <h2 className="text-base font-bold">Suggested Artists</h2>
                 <button
                   onClick={handleRefreshSuggested}
                   disabled={loadingSuggested}
@@ -249,6 +285,11 @@ export function ArtistsPage() {
                   <RefreshIcon size={18} />
                 </button>
               </div>
+              <GenreChips
+                value={suggestedGenreFilter}
+                genres={followedGenres}
+                onChange={handleSuggestedGenreChange}
+              />
               {loadingSuggested ? (
                 <HorizontalSkeleton />
               ) : suggestedArtists.length === 0 ? (
@@ -258,7 +299,7 @@ export function ArtistsPage() {
                     : 'No new suggestions found. Try following more artists to expand your recommendations.'}
                 </p>
               ) : (
-                <div className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-hide">
+                <div className="flex gap-3 overflow-x-auto px-4 scrollbar-hide">
                   {suggestedArtists.map((artist) => (
                     <ArtistCard
                       key={artist.id}
@@ -356,7 +397,7 @@ function ArtistCard({ artist, isFollowing, isToggling, onToggleFollow, showGenre
           <MicIcon size={24} className="text-[#B3B3B3]" />
         </div>
       )}
-      <p className="text-white text-xs font-medium text-center leading-tight line-clamp-2 w-full">
+      <p className="text-white text-xs font-medium text-center leading-tight line-clamp-2 w-full h-[30px]">
         {artist.name}
       </p>
       <div className="flex flex-wrap justify-center gap-1 h-[30px] content-start mb-1">
@@ -365,7 +406,7 @@ function ArtistCard({ artist, isFollowing, isToggling, onToggleFollow, showGenre
             {artist.matchedGenre}
           </span>
         ) : (
-          artist.genres?.slice(0, 2).map((genre) => (
+          artist.genres?.slice(0, artist.name.length > 15 ? 1 : 2).map((genre) => (
             <span
               key={genre}
               className="px-1.5 py-0.5 bg-[#282828] text-[#B3B3B3] text-[9px] rounded-full"
@@ -406,8 +447,10 @@ function HorizontalSkeleton() {
       {Array.from({ length: 5 }).map((_, i) => (
         <div key={i} className="flex flex-col items-center w-32 flex-shrink-0 bg-[#181818] rounded-xl p-3 gap-2">
           <div className="w-16 h-16 rounded-full bg-[#282828] animate-pulse" />
-          <div className="h-3 w-16 bg-[#282828] rounded animate-pulse" />
-          <div className="h-6 w-full bg-[#282828] rounded-full animate-pulse" />
+          <div className="h-[30px] w-16 bg-[#282828] rounded animate-pulse" />
+          <div className="h-[30px] w-full bg-[#282828] rounded animate-pulse" />
+          <div className="h-6 w-full bg-[#282828] rounded-full animate-pulse mt-auto" />
+          <div className="w-5 h-5 bg-[#282828] rounded-full animate-pulse" />
         </div>
       ))}
     </div>
@@ -419,5 +462,31 @@ function SpotifyIcon({ size = 20 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
     </svg>
+  );
+}
+
+interface GenreChipsProps {
+  value: string;
+  genres: string[];
+  onChange: (genre: string) => void;
+}
+
+function GenreChips({ value, genres, onChange }: GenreChipsProps) {
+  return (
+    <div className="flex gap-2 overflow-x-auto px-4 py-2.5 scrollbar-hide">
+      {['All genres', ...genres].map((genre) => (
+        <button
+          key={genre}
+          onClick={() => onChange(value === genre && genre !== 'All genres' ? 'All genres' : genre)}
+          className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors shrink-0 ${
+            value === genre
+              ? 'bg-[#1DB954] text-black'
+              : 'bg-[#282828] text-[#B3B3B3] hover:text-white border border-[#535353]'
+          }`}
+        >
+          {genre}
+        </button>
+      ))}
+    </div>
   );
 }

@@ -9,6 +9,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { ErrorScreen } from './components/ErrorScreen';
 import { PlusIcon } from './components/Icons';
 import { fetchProfile } from './lib/api';
+import type { UserProfile } from './lib/types';
 
 type Tab = 'playlists' | 'artists';
 
@@ -17,10 +18,14 @@ export default function App() {
   const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail' | 'error'>('loading');
   const [activeTab, setActiveTab] = useState<Tab>('playlists');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     fetchProfile()
-      .then(() => setView('home'))
+      .then((p) => {
+        setProfile(p);
+        setView('home');
+      })
       .catch((err) => {
         if ((err as any).status === 401) {
           setView('login');
@@ -29,8 +34,6 @@ export default function App() {
         }
       });
   }, []);
-
-  const onProfileLoaded = useCallback(() => {}, []);
 
   const handleLogout = useCallback(() => {
     setView('login');
@@ -78,26 +81,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#121212] text-white pb-16">
       <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10">
-        <Profile onProfileLoaded={onProfileLoaded} onLogout={handleLogout} />
+        <Profile profile={profile} onLogout={handleLogout} />
       </header>
 
-      {activeTab === 'playlists' && (
-        <>
-          <main>
-            <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} onCreateClick={() => setView('create')} />
-          </main>
+      <div className={activeTab === 'playlists' ? '' : 'hidden'}>
+        <main>
+          <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} onCreateClick={() => setView('create')} />
+        </main>
 
-          {/* Floating create button */}
-          <button
-            onClick={() => setView('create')}
-            className="fixed bottom-20 right-5 w-14 h-14 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full shadow-lg flex items-center justify-center z-10"
-          >
-            <PlusIcon size={28} />
-          </button>
-        </>
-      )}
+        {/* Floating create button */}
+        <button
+          onClick={() => setView('create')}
+          className="fixed bottom-20 right-5 w-14 h-14 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full shadow-lg flex items-center justify-center z-10"
+        >
+          <PlusIcon size={28} />
+        </button>
+      </div>
 
-      {activeTab === 'artists' && <ArtistsPage />}
+      <div className={activeTab === 'artists' ? '' : 'hidden'}>
+        <ArtistsPage />
+      </div>
 
       <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} />
     </div>

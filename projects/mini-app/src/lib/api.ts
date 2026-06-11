@@ -146,8 +146,9 @@ export async function searchArtists(
   return fetchAPI<{ items: Artist[]; total: number }>(`/api/artists/search?${params}`);
 }
 
-export async function fetchSuggestedArtists(): Promise<{ items: Artist[] }> {
-  return fetchAPI<{ items: Artist[] }>('/api/artists/suggested');
+export async function fetchSuggestedArtists(genre?: string): Promise<{ items: Artist[] }> {
+  const params = genre ? `?genre=${encodeURIComponent(genre)}` : '';
+  return fetchAPI<{ items: Artist[] }>(`/api/artists/suggested${params}`);
 }
 
 export async function checkFollowingArtists(

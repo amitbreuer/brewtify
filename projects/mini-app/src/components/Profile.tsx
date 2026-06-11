@@ -1,26 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { UserProfile } from '../lib/types';
-import { fetchProfile, logout } from '../lib/api';
-import { ErrorState, ProfileSkeleton } from './shared';
+import { logout } from '../lib/api';
 
 interface ProfileProps {
-  onProfileLoaded: () => void;
+  profile: UserProfile | null;
   onLogout: () => void;
 }
 
-export function Profile({ onProfileLoaded, onLogout }: ProfileProps) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function Profile({ profile, onLogout }: ProfileProps) {
   const [loggingOut, setLoggingOut] = useState(false);
-
-  useEffect(() => {
-    fetchProfile()
-      .then((p) => {
-        setProfile(p);
-        onProfileLoaded();
-      })
-      .catch((err) => setError(err.message));
-  }, [onProfileLoaded]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -32,12 +20,8 @@ export function Profile({ onProfileLoaded, onLogout }: ProfileProps) {
     }
   };
 
-  if (error) {
-    return <ErrorState message={error} />;
-  }
-
   if (!profile) {
-    return <ProfileSkeleton />;
+    return null;
   }
 
   return (
