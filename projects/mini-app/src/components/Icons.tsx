@@ -88,3 +88,22 @@ export function PencilIcon({ className = '', size = 20 }: IconProps) {
     </svg>
   );
 }
+
+export function NoteIcon({ className = '', size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 18V5l12-2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="2" />
+      <circle cx="18" cy="16" r="3" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export function UserIcon({ className = '', size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
+      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}

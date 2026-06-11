@@ -3,14 +3,19 @@ import { Profile } from './components/Profile';
 import { PlaylistList } from './components/PlaylistList';
 import { CreatePlaylist } from './components/CreatePlaylist';
 import { PlaylistDetail } from './components/PlaylistDetail';
+import { ArtistsPage } from './components/ArtistsPage';
+import { BottomTabs } from './components/BottomTabs';
 import { LoginScreen } from './components/LoginScreen';
 import { ErrorScreen } from './components/ErrorScreen';
 import { PlusIcon } from './components/Icons';
 import { fetchProfile } from './lib/api';
 
+type Tab = 'playlists' | 'artists';
+
 export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail' | 'error'>('loading');
+  const [activeTab, setActiveTab] = useState<Tab>('playlists');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,22 +76,30 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#121212] text-white pb-20">
+    <div className="min-h-screen bg-[#121212] text-white pb-16">
       <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10">
         <Profile onProfileLoaded={onProfileLoaded} onLogout={handleLogout} />
       </header>
 
-      <main>
-        <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} onCreateClick={() => setView('create')} />
-      </main>
+      {activeTab === 'playlists' && (
+        <>
+          <main>
+            <PlaylistList key={refreshKey} onPlaylistClick={handlePlaylistClick} onCreateClick={() => setView('create')} />
+          </main>
 
-      {/* Floating create button */}
-      <button
-        onClick={() => setView('create')}
-        className="fixed bottom-6 right-5 w-14 h-14 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full shadow-lg flex items-center justify-center"
-      >
-        <PlusIcon size={28} />
-      </button>
+          {/* Floating create button */}
+          <button
+            onClick={() => setView('create')}
+            className="fixed bottom-20 right-5 w-14 h-14 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full shadow-lg flex items-center justify-center z-10"
+          >
+            <PlusIcon size={28} />
+          </button>
+        </>
+      )}
+
+      {activeTab === 'artists' && <ArtistsPage />}
+
+      <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 }

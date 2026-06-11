@@ -110,6 +110,192 @@ spotifyRoutes.get('/api/playlists/:playlistId', async (req: Request, res: Respon
   }
 });
 
+// GET /api/artists/search?q=...&limit=...
+spotifyRoutes.get('/api/artists/search', async (req: Request, res: Response) => {
+  try {
+    const query = req.query.q as string;
+    if (!query || query.trim().length === 0) {
+      res.status(400).json({ error: 'q query param required' });
+      return;
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 50);
+    const data = await spotifyService.searchArtists((req as AuthenticatedRequest).spotifyToken, query, limit);
+    res.json(data);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to search artists', { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/artists/suggested — get suggested artists based on followed artists' genres
+spotifyRoutes.get('/api/artists/suggested', async (req: Request, res: Response) => {
+  try {
+    const token = (req as AuthenticatedRequest).spotifyToken;
+
+    // Fetch all followed artists
+    const allFollowed: any[] = [];
+    let after: string | undefined;
+    let hasMore = true;
+    while (hasMore) {
+      const data = await spotifyService.getFollowedArtists(token, 50, after);
+      allFollowed.push(...data.items);
+      after = data.next || undefined;
+      hasMore = data.next !== null;
+    }
+
+    if (allFollowed.length === 0) {
+      res.json({ items: [] });
+      return;
+    }
+
+    // Collect genres from followed artists and count frequency
+    const genreCount = new Map<string, number>();
+    for (const artist of allFollowed) {
+      for (const genre of artist.genres || []) {
+        genreCount.set(genre, (genreCount.get(genre) || 0) + 1);
+      }
+    }
+
+    if (genreCount.size === 0) {
+      res.json({ items: [] });
+      return;
+    }
+
+    // Pick 5 random genres (weighted by frequency for relevance)
+    const genreEntries = [...genreCount.entries()];
+    const totalWeight = genreEntries.reduce((sum, [, count]) => sum + count, 0);
+    const selectedGenres: string[] = [];
+    const usedIndices = new Set<number>();
+
+    while (selectedGenres.length < Math.min(5, genreEntries.length)) {
+      let rand = Math.random() * totalWeight;
+      for (let i = 0; i < genreEntries.length; i++) {
+        if (usedIndices.has(i)) continue;
+        rand -= genreEntries[i][1];
+        if (rand <= 0) {
+          selectedGenres.push(genreEntries[i][0]);
+          usedIndices.add(i);
+          break;
+        }
+      }
+    }
+
+    // Search for artists in selected genres
+    const followedIds = new Set(allFollowed.map((a: any) => a.id));
+    const seenIds = new Set<string>();
+    const candidates: any[] = [];
+
+    for (const genre of selectedGenres) {
+      try {
+        const results = await spotifyService.searchArtists(token, `genre:"${genre}"`, 20);
+        for (const artist of results.items) {
+          if (!followedIds.has(artist.id) && !seenIds.has(artist.id)) {
+            seenIds.add(artist.id);
+            // Tag artist with the genre that surfaced them
+            candidates.push({ ...artist, matchedGenre: genre });
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.warn(`Failed to search artists for genre "${genre}"`, { genre, error: msg });
+      }
+    }
+
+    // Pick top 2 per genre (by popularity) for diversity, then fill remaining slots
+    const byGenre = new Map<string, any[]>();
+    for (const artist of candidates) {
+      const list = byGenre.get(artist.matchedGenre) || [];
+      list.push(artist);
+      byGenre.set(artist.matchedGenre, list);
+    }
+
+    const suggestions: any[] = [];
+    for (const [, artists] of byGenre) {
+      artists.sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0));
+      suggestions.push(...artists.slice(0, 2));
+    }
+
+    // If fewer than 10, fill with remaining candidates by popularity
+    if (suggestions.length < 10) {
+      const pickedIds = new Set(suggestions.map((a) => a.id));
+      const remaining = candidates
+        .filter((a) => !pickedIds.has(a.id))
+        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+      suggestions.push(...remaining.slice(0, 10 - suggestions.length));
+    }
+
+    res.json({ items: suggestions.slice(0, 10) });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to fetch suggested artists', { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/artists/following/check?ids=id1,id2
+spotifyRoutes.get('/api/artists/following/check', async (req: Request, res: Response) => {
+  try {
+    const ids = (req.query.ids as string || '').split(',').filter(Boolean);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'ids query param required' });
+      return;
+    }
+    if (ids.length > 50) {
+      res.status(400).json({ error: 'Maximum 50 artist IDs per request' });
+      return;
+    }
+    const results = await spotifyService.checkFollowingArtists((req as AuthenticatedRequest).spotifyToken, ids);
+    res.json(ids.map((id, i) => ({ id, following: results[i] })));
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to check following status', { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// PUT /api/artists/follow — follow artists
+spotifyRoutes.put('/api/artists/follow', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids must be a non-empty array' });
+      return;
+    }
+    if (ids.length > 50) {
+      res.status(400).json({ error: 'Maximum 50 artist IDs per request' });
+      return;
+    }
+    await spotifyService.followArtists((req as AuthenticatedRequest).spotifyToken, ids);
+    res.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to follow artists', { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+// DELETE /api/artists/follow — unfollow artists
+spotifyRoutes.delete('/api/artists/follow', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids must be a non-empty array' });
+      return;
+    }
+    if (ids.length > 50) {
+      res.status(400).json({ error: 'Maximum 50 artist IDs per request' });
+      return;
+    }
+    await spotifyService.unfollowArtists((req as AuthenticatedRequest).spotifyToken, ids);
+    res.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    log.error('Failed to unfollow artists', { error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
 // GET /api/artists?ids=id1,id2,id3 — get multiple artists by IDs
 spotifyRoutes.get('/api/artists', async (req: Request, res: Response) => {
   try {

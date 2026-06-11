@@ -37,6 +37,7 @@ export class SpotifyService {
       'playlist-modify-private',
       'playlist-modify-public',
       'user-follow-read',
+      'user-follow-modify',
     ].join(' ');
 
     const params = new URLSearchParams({
@@ -425,6 +426,66 @@ export class SpotifyService {
     }
 
     // Spotify's update playlist endpoint returns empty body, no need to parse JSON
+  }
+
+  async searchArtists(
+    accessToken: string,
+    query: string,
+    limit: number = 20
+  ): Promise<{ items: Artist[]; total: number }> {
+    const params = new URLSearchParams({
+      q: query,
+      type: 'artist',
+      limit: limit.toString(),
+    });
+
+    const data = await this.makeRequest<any>(
+      `/search?${params}`,
+      accessToken
+    );
+
+    return {
+      items: data.artists?.items || [],
+      total: data.artists?.total || 0,
+    };
+  }
+
+
+
+  async followArtists(accessToken: string, ids: string[]): Promise<void> {
+    const response = await fetch(
+      `${SPOTIFY_API_BASE}/me/following?type=artist&ids=${ids.join(',')}`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  async unfollowArtists(accessToken: string, ids: string[]): Promise<void> {
+    const response = await fetch(
+      `${SPOTIFY_API_BASE}/me/following?type=artist&ids=${ids.join(',')}`,
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  async checkFollowingArtists(accessToken: string, ids: string[]): Promise<boolean[]> {
+    const data = await this.makeRequest<boolean[]>(
+      `/me/following/contains?type=artist&ids=${ids.join(',')}`,
+      accessToken
+    );
+    return data;
   }
 }
 

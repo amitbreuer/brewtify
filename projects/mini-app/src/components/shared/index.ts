@@ -9,4 +9,4 @@ export { LoadingState } from './LoadingState';
 export { ErrorState } from './ErrorState';
 export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogData } from './ConfirmDialog';
-export { ProfileSkeleton, PlaylistListSkeleton, PlaylistDetailSkeleton } from './Skeleton';
+export { ProfileSkeleton, PlaylistListSkeleton, PlaylistDetailSkeleton, ArtistListSkeleton } from './Skeleton';

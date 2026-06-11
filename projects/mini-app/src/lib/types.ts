@@ -31,6 +31,7 @@ export interface Artist {
   genres: string[];
   followers: { total: number };
   external_urls: { spotify: string };
+  matchedGenre?: string;
 }
 
 export interface Track {

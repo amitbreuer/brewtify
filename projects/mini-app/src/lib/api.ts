@@ -138,6 +138,40 @@ export async function fetchArtistsByIds(ids: string[]): Promise<Artist[]> {
   return fetchAPI<Artist[]>(`/api/artists?ids=${ids.join(',')}`);
 }
 
+export async function searchArtists(
+  query: string,
+  limit = 20
+): Promise<{ items: Artist[]; total: number }> {
+  const params = new URLSearchParams({ q: query, limit: limit.toString() });
+  return fetchAPI<{ items: Artist[]; total: number }>(`/api/artists/search?${params}`);
+}
+
+export async function fetchSuggestedArtists(): Promise<{ items: Artist[] }> {
+  return fetchAPI<{ items: Artist[] }>('/api/artists/suggested');
+}
+
+export async function checkFollowingArtists(
+  ids: string[]
+): Promise<{ id: string; following: boolean }[]> {
+  return fetchAPI<{ id: string; following: boolean }[]>(
+    `/api/artists/following/check?ids=${ids.join(',')}`
+  );
+}
+
+export async function followArtist(id: string): Promise<void> {
+  await fetchAPI('/api/artists/follow', {
+    method: 'PUT',
+    body: JSON.stringify({ ids: [id] }),
+  });
+}
+
+export async function unfollowArtist(id: string): Promise<void> {
+  await fetchAPI('/api/artists/follow', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: [id] }),
+  });
+}
+
 export async function fetchAllFollowedArtists(): Promise<Artist[]> {
   const all: Artist[] = [];
   let after: string | undefined;

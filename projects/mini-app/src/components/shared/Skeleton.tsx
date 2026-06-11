@@ -101,3 +101,21 @@ export function PlaylistDetailSkeleton() {
     </div>
   );
 }
+
+export function ArtistListSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 p-2">
+          <Bone className="w-12 h-12 rounded-full" />
+          <div className="flex-1 flex flex-col gap-1.5">
+            <Bone className="h-4 w-2/3" />
+            <Bone className="h-3 w-1/3" />
+          </div>
+          <Bone className="h-7 w-20 rounded-full" />
+          <Bone className="w-5 h-5 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
