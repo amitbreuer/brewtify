@@ -11,6 +11,7 @@ export const TTL = {
   FOLLOWED_ARTISTS: 60 * 5,         // 5 minutes
   PLAYLIST_META: 60 * 60,            // 1 hour
   PENDING_AUTH: 60 * 10,             // 10 minutes
+  LASTFM_SIMILAR: 60 * 60 * 24 * 7, // 7 days
 } as const;
 
 let redis: Redis | null = null;

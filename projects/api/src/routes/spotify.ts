@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { spotifyService } from '../services/spotify';
+import { lastFmService } from '../services/lastfm';
+import { redisCacheService } from '../services/redis-cache';
 import { getAccessTokenForUser } from './auth';
 import { selectRandomTracks } from '@brewtify/shared';
 import { prisma } from '../services/db';
@@ -128,7 +130,7 @@ spotifyRoutes.get('/api/artists/search', async (req: Request, res: Response) => 
   }
 });
 
-// GET /api/artists/suggested — get suggested artists based on followed artists' genres
+// GET /api/artists/suggested — get suggested artists via Last.fm similar artists
 spotifyRoutes.get('/api/artists/suggested', async (req: Request, res: Response) => {
   try {
     const token = (req as AuthenticatedRequest).spotifyToken;
@@ -151,139 +153,84 @@ spotifyRoutes.get('/api/artists/suggested', async (req: Request, res: Response) 
       return;
     }
 
-    const followedIds = new Set(allFollowed.map((a: any) => a.id));
-    const seenIds = new Set<string>();
-    const candidates: any[] = [];
-
+    // Filter seed artists by genre if requested
+    let seedPool = allFollowed;
     if (genreFilters.length > 0) {
-      // Search specific genres
-      for (const genre of genreFilters) {
-        try {
-          const results = await spotifyService.searchArtists(token, `genre:"${genre}"`, 50);
-          for (const artist of results.items) {
-            if (!followedIds.has(artist.id) && !seenIds.has(artist.id)) {
-              seenIds.add(artist.id);
-              candidates.push({ ...artist, matchedGenre: genre });
-            }
-          }
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          log.warn(`Failed to search artists for genre "${genre}"`, { genre, error: msg });
-        }
-      }
-
-      // Sort by popularity, pick 10 randomly from top 30 (weighted by popularity)
-      candidates.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
-      const pool = candidates.slice(0, 30);
-      const picked: any[] = [];
-      while (picked.length < 10 && pool.length > 0) {
-        const totalPop = pool.reduce((sum, a) => sum + (a.popularity ?? 1), 0);
-        let rand = Math.random() * totalPop;
-        for (let i = 0; i < pool.length; i++) {
-          rand -= pool[i].popularity ?? 1;
-          if (rand <= 0) {
-            picked.push(pool.splice(i, 1)[0]);
-            break;
-          }
-        }
-      }
-      res.json({ items: picked });
-    } else {
-      // Pick 5 random genres weighted by frequency
-      const genreCount = new Map<string, number>();
-      for (const artist of allFollowed) {
-        for (const genre of artist.genres || []) {
-          genreCount.set(genre, (genreCount.get(genre) || 0) + 1);
-        }
-      }
-
-      if (genreCount.size === 0) {
-        res.json({ items: [] });
-        return;
-      }
-
-      const genreEntries = [...genreCount.entries()];
-      const totalWeight = genreEntries.reduce((sum, [, count]) => sum + count, 0);
-      const selectedGenres: string[] = [];
-      const usedIndices = new Set<number>();
-
-      while (selectedGenres.length < Math.min(5, genreEntries.length)) {
-        let rand = Math.random() * totalWeight;
-        for (let i = 0; i < genreEntries.length; i++) {
-          if (usedIndices.has(i)) continue;
-          rand -= genreEntries[i][1];
-          if (rand <= 0) {
-            selectedGenres.push(genreEntries[i][0]);
-            usedIndices.add(i);
-            break;
-          }
-        }
-      }
-
-      // Search for artists in selected genres
-      for (const genre of selectedGenres) {
-        try {
-          const results = await spotifyService.searchArtists(token, `genre:"${genre}"`, 20);
-          for (const artist of results.items) {
-            if (!followedIds.has(artist.id) && !seenIds.has(artist.id)) {
-              seenIds.add(artist.id);
-              candidates.push({ ...artist, matchedGenre: genre });
-            }
-          }
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          log.warn(`Failed to search artists for genre "${genre}"`, { genre, error: msg });
-        }
-      }
-
-      // Pick results with genre diversity using weighted random selection
-      const byGenre = new Map<string, any[]>();
-      for (const artist of candidates) {
-        const list = byGenre.get(artist.matchedGenre) || [];
-        list.push(artist);
-        byGenre.set(artist.matchedGenre, list);
-      }
-
-      // Sort each genre's artists by popularity
-      for (const [, artists] of byGenre) {
-        artists.sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0));
-      }
-
-      // Round-robin: pick 1 randomly (weighted by popularity) from each genre, repeat until 10
-      const suggestions: any[] = [];
-      const genreKeys = [...byGenre.keys()];
-      let round = 0;
-      while (suggestions.length < 10 && genreKeys.length > 0) {
-        const emptyGenres: number[] = [];
-        for (let g = 0; g < genreKeys.length; g++) {
-          if (suggestions.length >= 10) break;
-          const pool = byGenre.get(genreKeys[g])!;
-          if (pool.length === 0) {
-            emptyGenres.push(g);
-            continue;
-          }
-          // Weighted random pick from this genre's remaining pool
-          const slice = pool.slice(0, Math.max(5 - round, 2));
-          const totalPop = slice.reduce((sum: number, a: any) => sum + (a.popularity ?? 1), 0);
-          let rand = Math.random() * totalPop;
-          for (let i = 0; i < slice.length; i++) {
-            rand -= slice[i].popularity ?? 1;
-            if (rand <= 0) {
-              suggestions.push(slice[i]);
-              pool.splice(i, 1);
-              break;
-            }
-          }
-        }
-        // Remove exhausted genres
-        for (let i = emptyGenres.length - 1; i >= 0; i--) {
-          genreKeys.splice(emptyGenres[i], 1);
-        }
-        round++;
-      }
-
-      res.json({ items: suggestions.slice(0, 10) });
+      seedPool = allFollowed.filter((a: any) =>
+        a.genres?.some((g: string) => genreFilters.some((f) => g.toLowerCase().includes(f.toLowerCase()))),
+      );
+      if (seedPool.length === 0) seedPool = allFollowed;
     }
+
+    // Pick up to 5 random seed artists
+    const shuffled = [...seedPool].sort(() => Math.random() - 0.5);
+    const seeds = shuffled.slice(0, 5);
+
+    // Get similar artists from Last.fm for each seed
+    const followedIds = new Set(allFollowed.map((a: any) => a.id));
+    const seenNames = new Set<string>();
+    const candidates: { name: string; match: number }[] = [];
+
+    const similarResults = await Promise.all(
+      seeds.map((seed) => lastFmService.getSimilarArtists(seed.name, 20)),
+    );
+
+    for (const similar of similarResults) {
+      for (const artist of similar) {
+        const normalizedName = artist.name.toLowerCase();
+        if (!seenNames.has(normalizedName)) {
+          seenNames.add(normalizedName);
+          candidates.push({ name: artist.name, match: artist.match });
+        }
+      }
+    }
+
+    // Sort by match score descending, take top 20 to resolve against Spotify
+    candidates.sort((a, b) => b.match - a.match);
+    const topCandidates = candidates.slice(0, 20);
+
+    // Resolve Last.fm names to Spotify artists (using permanent cache)
+    const resolvedArtists: any[] = [];
+    for (const candidate of topCandidates) {
+      if (resolvedArtists.length >= 10) break;
+
+      const cacheKey = `name-to-spotify:${candidate.name.toLowerCase()}`;
+      let spotifyArtist = await redisCacheService.get<any>(cacheKey);
+
+      if (!spotifyArtist) {
+        try {
+          const results = await spotifyService.searchArtists(token, candidate.name, 5);
+          // Find best match by name similarity
+          spotifyArtist = results.items.find(
+            (a) => a.name.toLowerCase() === candidate.name.toLowerCase(),
+          ) || null;
+
+          if (!spotifyArtist && results.items.length > 0) {
+            // Fallback: accept first result if name is close enough
+            const first = results.items[0];
+            if (first.name.toLowerCase().includes(candidate.name.toLowerCase()) ||
+                candidate.name.toLowerCase().includes(first.name.toLowerCase())) {
+              spotifyArtist = first;
+            }
+          }
+
+          // Cache permanently (no TTL) — Spotify IDs are immutable
+          if (spotifyArtist) {
+            await redisCacheService.set(cacheKey, spotifyArtist);
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          log.warn(`Failed to resolve "${candidate.name}" on Spotify`, { error: msg });
+          continue;
+        }
+      }
+
+      if (spotifyArtist && !followedIds.has(spotifyArtist.id)) {
+        resolvedArtists.push(spotifyArtist);
+      }
+    }
+
+    res.json({ items: resolvedArtists });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     log.error('Failed to fetch suggested artists', { error: message });

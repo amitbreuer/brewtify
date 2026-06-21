@@ -52,6 +52,7 @@ jobs:
             TAP_BOT_TOKEN=TAP_BOT_TOKEN:latest
             TAP_ADMIN_CHAT_ID=TAP_ADMIN_CHAT_ID:latest
             TAP_ENABLED=TAP_ENABLED:latest
+            LASTFM_API_KEY=LASTFM_API_KEY:latest
           flags: |
             --min-instances=0
             --max-instances=2
