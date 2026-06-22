@@ -29,52 +29,68 @@ export async function processScheduledUpdates() {
   }
 
   log.info(`${duePlaylists.length} playlist(s) due for update`);
-  getTap().notify({
-    type: 'cron.start',
-    message: `Cron started — ${duePlaylists.length} playlist(s) due for update`,
-  });
 
   const queue = new PQueue({ concurrency: CONCURRENCY });
-  let successCount = 0;
-  let failCount = 0;
+  const results: PlaylistUpdateResult[] = [];
 
   for (const playlist of duePlaylists) {
     queue.add(async () => {
-      const ok = await updatePlaylist(playlist);
-      if (ok) successCount++;
-      else failCount++;
+      const result = await updatePlaylist(playlist);
+      results.push(result);
     });
   }
 
   await queue.onIdle();
   log.info('All updates complete');
+
+  // Send a single summary notification with per-playlist results
+  const successCount = results.filter((r) => r.success).length;
+  const failCount = results.filter((r) => !r.success).length;
+
+  const lines = results.map((r) => {
+    const user = r.username ? `@${r.username}` : `user:${r.userId}`;
+    if (r.success) {
+      return `  ✅ "${r.playlistName}" (${user}) — ${r.trackCount} tracks`;
+    }
+    return `  ❌ "${r.playlistName}" (${user}) — ${r.error}`;
+  });
+
+  const summary = [
+    `Scheduled update finished: ${successCount} succeeded, ${failCount} failed`,
+    '',
+    ...lines,
+  ].join('\n');
+
   getTap().notify({
     type: 'cron.summary',
-    message: `Cron complete — ${successCount} succeeded, ${failCount} failed (${duePlaylists.length} total)`,
+    message: summary,
     meta: { successCount, failCount, total: duePlaylists.length },
   });
 }
 
-async function updatePlaylist(playlist: any): Promise<boolean> {
+interface PlaylistUpdateResult {
+  success: boolean;
+  playlistName: string;
+  userId: string;
+  username?: string;
+  trackCount?: number;
+  error?: string;
+}
+
+async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
   const { id, spotifyPlaylistId, artistIds, trackCount, user, name: playlistName } = playlist;
   const telegramUserId = user.telegramUserId;
   const username = user.telegramUsername;
 
-  // Populate tap username cache from DB
   if (username) getTap().setUsername(telegramUserId, username);
 
+  const baseResult = { playlistName, userId: telegramUserId, username };
+
   try {
-    // Get a valid access token (auto-refreshes if expired)
     const accessToken = await getAccessTokenForUser(telegramUserId);
     if (!accessToken) {
       await markFailed(id, 'auth_expired', 'No valid token — user needs to /login again');
-      getTap().notify({
-        type: 'error.auth',
-        userId: telegramUserId,
-        message: `Token expired for "${playlistName}"`,
-        meta: { spotifyPlaylistId },
-      });
-      return false;
+      return { ...baseResult, success: false, error: 'token expired' };
     }
 
     // Fetch tracks from all artists
@@ -86,13 +102,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
 
     if (allTracks.length === 0) {
       await markFailed(id, 'failed', 'No tracks found for configured artists');
-      getTap().notify({
-        type: 'cron.failure',
-        userId: telegramUserId,
-        message: `No tracks found for "${playlistName}"`,
-        meta: { spotifyPlaylistId },
-      });
-      return false;
+      return { ...baseResult, success: false, error: 'no tracks found' };
     }
 
     // Shuffle (Fisher-Yates) and select
@@ -118,13 +128,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
     });
 
     log.info('Playlist updated successfully', { spotifyPlaylistId, trackCount: selectedTracks.length });
-    getTap().notify({
-      type: 'cron.success',
-      userId: telegramUserId,
-      message: `Updated "${playlistName}" (${selectedTracks.length} tracks)`,
-      meta: { spotifyPlaylistId, trackCount: selectedTracks.length },
-    });
-    return true;
+    return { ...baseResult, success: true, trackCount: selectedTracks.length };
   } catch (err: any) {
     log.error('Failed to update playlist', { playlistId: id, error: err.message });
 
@@ -141,13 +145,7 @@ async function updatePlaylist(playlist: any): Promise<boolean> {
       });
     }
 
-    getTap().notify({
-      type: 'cron.failure',
-      userId: telegramUserId,
-      message: `Failed to update "${playlistName}": ${err.message}`,
-      meta: { spotifyPlaylistId, failureCount: newFailureCount },
-    });
-    return false;
+    return { ...baseResult, success: false, error: err.message };
   }
 }
 

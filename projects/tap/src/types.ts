@@ -4,9 +4,6 @@ export type TapEventType =
   | 'playlist.create'
   | 'playlist.update'
   | 'playlist.schedule'
-  | 'cron.start'
-  | 'cron.success'
-  | 'cron.failure'
   | 'cron.summary'
   | 'error.auth'
   | 'error.general';
