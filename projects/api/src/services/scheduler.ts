@@ -1,4 +1,5 @@
 import PQueue from 'p-queue';
+import { selectRandomTracks } from '@brewtify/shared';
 import { prisma } from './db';
 import { spotifyService } from './spotify';
 import { getAccessTokenForUser } from '../routes/auth';
@@ -78,7 +79,16 @@ interface PlaylistUpdateResult {
 }
 
 async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
-  const { id, spotifyPlaylistId, artistIds, trackCount, user, name: playlistName } = playlist;
+  const {
+    id,
+    spotifyPlaylistId,
+    artistIds,
+    trackCount,
+    user,
+    name: playlistName,
+    weights: weightsJson,
+    eraPreferences: eraPreferencesJson,
+  } = playlist;
   const telegramUserId = user.telegramUserId;
   const username = user.telegramUsername;
 
@@ -93,24 +103,32 @@ async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
       return { ...baseResult, success: false, error: 'token expired' };
     }
 
-    // Fetch tracks from all artists
-    const allTracks: string[] = [];
+    // Fetch tracks per artist so the configured split can be applied
+    const artistsTracks = new Map<string, any[]>();
     for (const artistId of artistIds) {
-      const tracks = await spotifyService.getAllArtistTracks(accessToken, artistId);
-      allTracks.push(...tracks.map((t) => `spotify:track:${t.id}`));
+      try {
+        const tracks = await spotifyService.getAllArtistTracks(accessToken, artistId);
+        if (tracks.length > 0) artistsTracks.set(artistId, tracks);
+      } catch (err: any) {
+        log.warn(`Failed to fetch tracks for artist ${artistId}`, {
+          artistId,
+          error: err.message,
+        });
+      }
     }
 
-    if (allTracks.length === 0) {
+    if (artistsTracks.size === 0) {
       await markFailed(id, 'failed', 'No tracks found for configured artists');
       return { ...baseResult, success: false, error: 'no tracks found' };
     }
 
-    // Shuffle (Fisher-Yates) and select
-    for (let i = allTracks.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allTracks[i], allTracks[j]] = [allTracks[j], allTracks[i]];
-    }
-    const selectedTracks = allTracks.slice(0, trackCount);
+    const weights = toNumberMap(weightsJson);
+    const eraPreferences = toNumberMap(eraPreferencesJson);
+
+    const selectedTracks = selectRandomTracks(artistsTracks, trackCount, {
+      weights,
+      eraPreferences,
+    }).map((t: any) => t.uri ?? `spotify:track:${t.id}`);
 
     // Replace playlist tracks on Spotify
     await spotifyService.replacePlaylistTracks(accessToken, spotifyPlaylistId, selectedTracks);
@@ -147,6 +165,18 @@ async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
 
     return { ...baseResult, success: false, error: err.message };
   }
+}
+
+/**
+ * Converts a Prisma Json column of `{ artistId: number }` into a Map.
+ * Returns undefined when the column is empty so callers fall back to defaults.
+ */
+export function toNumberMap(json: unknown): Map<string, number> | undefined {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return undefined;
+  const entries = Object.entries(json as Record<string, unknown>)
+    .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+    .map(([k, v]) => [k, v as number] as const);
+  return entries.length > 0 ? new Map(entries) : undefined;
 }
 
 async function markFailed(playlistId: string, status: string, error: string) {

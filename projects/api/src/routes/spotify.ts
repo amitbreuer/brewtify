@@ -5,7 +5,7 @@ import { redisCacheService } from '../services/redis-cache';
 import { getAccessTokenForUser } from './auth';
 import { selectRandomTracks } from '@brewtify/shared';
 import { prisma } from '../services/db';
-import { calculateNextUpdate } from '../services/scheduler';
+import { calculateNextUpdate, toNumberMap } from '../services/scheduler';
 import { createLogger } from '../utils/logger';
 import { getTap } from '@brewtify/tap';
 
@@ -467,10 +467,9 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
       return;
     }
 
-    const { artistIds, trackCount, weights: weightsJson } = dbPlaylist;
-    const weights = weightsJson
-      ? new Map<string, number>(Object.entries(weightsJson as Record<string, number>))
-      : undefined;
+    const { artistIds, trackCount, weights: weightsJson, eraPreferences: eraPreferencesJson } = dbPlaylist;
+    const weights = toNumberMap(weightsJson);
+    const eraPreferences = toNumberMap(eraPreferencesJson);
 
     log.info('Updating playlist', { spotifyPlaylistId, artistCount: artistIds.length, trackCount });
 
@@ -479,14 +478,14 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
     for (const id of artistIds) {
       try {
         const tracks = await spotifyService.getAllArtistTracks(token, id);
-        artistsTracks.set(id, tracks);
+        if (tracks.length > 0) artistsTracks.set(id, tracks);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         log.warn(`Failed to fetch tracks for artist ${id}`, { artistId: id, error: msg });
       }
     }
 
-    const selected = selectRandomTracks(artistsTracks, trackCount, weights);
+    const selected = selectRandomTracks(artistsTracks, trackCount, { weights, eraPreferences });
     const uris = selected.map((t: any) => t.uri);
 
     await spotifyService.replacePlaylistTracks(token, spotifyPlaylistId, uris);
