@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { selectRandomTracks } from '@brewtify/shared';
 import type { Artist, Track, UserProfile } from '../lib/types';
 import {
   fetchAllArtistTracks,
@@ -132,51 +133,19 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
         return;
       }
 
-      const totalPct = Array.from(artistTrackMap.keys()).reduce(
-        (sum, id) => sum + (displayPercentages.get(id) || 0), 0
-      );
+      const weightMap = new Map<string, number>();
+      artistTrackMap.forEach((_, id) => {
+        weightMap.set(id, displayPercentages.get(id) ?? Math.round(100 / artistTrackMap.size));
+      });
 
-      let selected: Track[] = [];
-      let allocated = 0;
-      const entries = Array.from(artistTrackMap.entries());
+      const eraMap = new Map<string, number>();
+      artistTrackMap.forEach((_, id) => eraMap.set(id, eraPreferences.get(id) ?? 50));
 
-      for (let i = 0; i < entries.length; i++) {
-        const [artistId, tracks] = entries[i];
-        const pct = displayPercentages.get(artistId) || Math.round(100 / entries.length);
-        const quota = i === entries.length - 1
-          ? songCount - allocated
-          : Math.round((pct / totalPct) * songCount);
+      const selected = selectRandomTracks(artistTrackMap, songCount, {
+        weights: weightMap,
+        eraPreferences: eraMap,
+      });
 
-        const sorted = tracks
-          .filter((t) => t.album?.release_date)
-          .sort((a, b) => (a.album.release_date! > b.album.release_date! ? 1 : -1));
-        const undated = tracks.filter((t) => !t.album?.release_date);
-
-        const artistEra = eraPreferences.get(artistId) ?? 50;
-        let artistSelected: Track[];
-        if (artistEra === 50 || sorted.length === 0) {
-          const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-          artistSelected = shuffled.slice(0, quota);
-        } else {
-          const bias = artistEra / 100;
-          const weighted = sorted.map((track, idx) => {
-            const position = sorted.length > 1 ? idx / (sorted.length - 1) : 0.5;
-            const weight = Math.pow(bias < 0.5 ? (1 - position) : position, 2 + Math.abs(bias - 0.5) * 6);
-            return { track, weight: weight + Math.random() * 0.1 };
-          });
-          weighted.sort((a, b) => b.weight - a.weight);
-          artistSelected = weighted.slice(0, quota).map((w) => w.track);
-          if (artistSelected.length < quota) {
-            const shuffledUndated = undated.sort(() => Math.random() - 0.5);
-            artistSelected.push(...shuffledUndated.slice(0, quota - artistSelected.length));
-          }
-        }
-
-        selected.push(...artistSelected);
-        allocated += artistSelected.length;
-      }
-
-      selected = selected.sort(() => Math.random() - 0.5);
       const trackUris = selected.map((t) => t.uri);
 
       await addTracksToPlaylist(playlist.id, trackUris);
