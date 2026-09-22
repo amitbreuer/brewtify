@@ -140,3 +140,17 @@ export default defineConfig([
   },
 ])
 ```
+# Interactive Party demo
+
+With `VITE_PARTY_PREVIEW=true` on the Vite development server, open
+`/app/?section=party&demo=host` to review the actual host room and moderation
+components with sample songs. The preview toolbar switches to Guest view and
+Host setup; approvals, version selection, submissions, lock/close and device
+selection update local sample state. Reset samples restores the example requests.
+
+This is a clearly labeled browser-only demo, not a Telegram session. It never
+calls Party APIs, authorizes a provider or queues music. QR links use
+`example.invalid` and are not invitations. Both the development flag and `demo`
+query parameter are required; the demo is excluded from production builds even
+if the preview flag is set during a build. The normal preview without `demo`
+still shows the real Open in Telegram boundary.

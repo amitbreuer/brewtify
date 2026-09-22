@@ -197,7 +197,10 @@ Root-only environments must use a non-root test user; the suite never creates
 OS users or changes shared database services.
 
 The frontend README describes the development-only visual fixture and unique
-preview port. Production party routes have no fixture identity. Real Telegram
+preview port. Add `&demo=host` to `/app/?section=party` to use the interactive,
+sample-data Host/Guest/Setup screens; these reuse the real UI components with
+a browser-local transport that never calls Party APIs or providers. Production
+builds exclude this demo. Production party routes have no fixture identity. Real Telegram
 tests require an HTTPS staging deployment/test bot, signed fresh launch data,
 secure-cookie behavior, the external browser with a distinct cookie jar and the
 actual allowlisted host. Record those results separately before enabling the pilot.
@@ -214,7 +217,7 @@ the focused `lint:party` gate covers changed frontend code without suppressing t
 
 The isolated worktree passed all five workspace builds, 39 provider/transport
 tests, 15 catalog/Telegram tests, 15 native PostgreSQL/HTTP integration scenarios,
-16 frontend tests, four headless Chrome browser checks, targeted frontend lint,
+17 frontend tests, five headless Chrome browser checks, targeted frontend lint,
 and Terraform initialization/validation without applying infrastructure.
 The PostgreSQL suite runs both migrations and verifies zero Prisma schema drift.
 Docker image execution was not available because the local Docker daemon was not

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "lint:party": "eslint src/App.tsx src/features src/lib/navigation.ts src/lib/telegram.ts src/components/BottomTabs.tsx src/components/Profile.tsx dev/party-preview.ts vite.config.ts",
+    "lint:party": "eslint src/App.tsx src/features src/lib/navigation.ts src/lib/telegram.ts src/components/BottomTabs.tsx src/components/Profile.tsx dev vite.config.ts",
     "preview": "vite preview",
     "test": "node --experimental-strip-types --test tests/*.test.mjs"
   },

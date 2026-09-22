@@ -7,9 +7,19 @@ import { LibraryErrorBoundary } from './features/library/LibraryErrorBoundary';
 
 const Library = lazy(() => import('./features/library/Library'));
 const Party = lazy(() => import('./features/party/Party'));
+const PartyPreview = import.meta.env.DEV && import.meta.env.VITE_PARTY_PREVIEW === 'true'
+  ? lazy(() => import('../dev/PartyPreview'))
+  : null;
 const disabled: PartyConfigDto = { enabled: false, telegramUrl: null, autoEnabled: false };
 
 export default function App() {
+  if (PartyPreview && new URLSearchParams(window.location.search).has('demo')) {
+    return <Suspense fallback={<div className="app-loading" role="status">Loading demo…</div>}><PartyPreview /></Suspense>;
+  }
+  return <AppContent />;
+}
+
+function AppContent() {
   const [launch] = useState(() => initialNavigation(window.location.search, telegram()?.initData));
   const [section, setSection] = useState<Section>(launch.section);
   const [pendingSecret, setPendingSecret] = useState(launch.secret);

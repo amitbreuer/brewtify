@@ -24,6 +24,34 @@ async function previewPage(options) {
   return page;
 }
 
+test('interactive demo renders host, guest and setup with no API traffic', async () => {
+  const page = await previewPage({ viewport: { width: 390, height: 844 } });
+  const requests = [];
+  const errors = [];
+  page.on('request', request => requests.push(request.url()));
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`${base}/app/?section=party&demo=host`);
+  await page.getByText('INTERACTIVE PREVIEW', { exact: true }).waitFor();
+  const afterglow = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Afterglow', exact: true }) });
+  await afterglow.getByRole('button', { name: 'Approve', exact: true }).click();
+  await afterglow.getByText('Added to host’s Spotify queue', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Guest view', exact: true }).click();
+  await page.getByRole('heading', { name: 'Your requests', exact: true }).waitFor();
+  assert.equal(await page.getByRole('article').count(), 1);
+  await page.getByLabel('Display name', { exact: true }).fill('You');
+  await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill('https://open.spotify.com/track/demo');
+  await page.getByRole('button', { name: 'Submit request', exact: true }).click();
+  await page.getByRole('heading', { name: 'Your sample song', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Host setup', exact: true }).click();
+  await page.getByLabel('Active Spotify device', { exact: true }).selectOption('living-room');
+  await page.getByRole('button', { name: 'Create demo party', exact: true }).click();
+  await page.getByRole('heading', { name: 'Your party', exact: true }).waitFor();
+  assert.equal(requests.some(url => new URL(url).pathname.startsWith('/api/')), false);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('mobile Party opens without Library requests or unsigned authentication', async () => {
   const page = await previewPage({ viewport: { width: 390, height: 844 } });
   const requests = [];

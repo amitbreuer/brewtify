@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { partyPreviewPlugins } from '../dev/party-preview.ts';
 import { partyFailureMessage } from '../src/features/party/messages.ts';
+import { PartyDemoClient } from '../dev/party-demo.ts';
 
 test('visual fixture is absent from production builds and disabled by default', () => {
   assert.deepEqual(partyPreviewPlugins('build', true), []);
@@ -42,5 +43,30 @@ test('provider failures have actionable labels without telling guests to log in'
   for (const code of ['apple_configuration', 'apple_unauthorized', 'apple_rate_limited', 'apple_unavailable', 'apple_invalid_response', 'apple_rejected']) {
     assert.match(partyFailureMessage(code), /Apple Music/);
     assert.doesNotMatch(partyFailureMessage(code), /Party needs attention/);
+  }
+});
+
+test('interactive preview changes sample state without calling real APIs', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () => assert.fail('Demo must never make a network request');
+  try {
+    const host = new PartyDemoClient(true);
+    const before = await host.request('/rooms/demo-room/requests');
+    assert.equal(before.requests.length, 3);
+    await host.request('/rooms/demo-room/requests/demo-request-1/action', { action: 'approve' });
+    assert.equal((await host.request('/rooms/demo-room/requests')).requests[0].status, 'added');
+    await host.request('/rooms/demo-room/requests/demo-request-2/action', { action: 'select', candidateId: 'demo-night-drive' });
+    assert.equal((await host.request('/rooms/demo-room/requests')).requests[1].status, 'matched');
+    await host.request('/rooms/demo-room/action', { action: 'lock' });
+    await assert.rejects(host.request('/rooms/demo-room/requests', { url: 'https://open.spotify.com/track/demo' }));
+    await assert.rejects(host.request('/auth/start', {}));
+    await assert.rejects(host.restore('unsigned'));
+    const guest = new PartyDemoClient(false);
+    assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 1);
+    await assert.rejects(guest.request('/rooms/demo-room/action', { action: 'close' }));
+    await guest.request('/rooms/demo-room/requests', { displayName: 'You', url: 'https://open.spotify.com/track/demo' });
+    assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 2);
+  } finally {
+    globalThis.fetch = original;
   }
 });
