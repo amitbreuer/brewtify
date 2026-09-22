@@ -7,6 +7,8 @@ import { spotifyRoutes } from './routes/spotify';
 import { cronRoutes } from './routes/cron';
 import { requestLogger } from './middleware/request-logger';
 import { env } from './utils/env';
+import { partyRoutes, internalPartyRoutes } from './party/routes';
+import { partyEnabled } from './party/config';
 
 const ALLOWED_ORIGINS = [
   'https://brewtify-133698158612.me-west1.run.app',
@@ -32,12 +34,22 @@ export function createServer() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-User-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-User-Id', 'X-Party-CSRF'],
     exposedHeaders: ['Content-Type'],
   }));
 
-  app.use(express.json());
   app.use(requestLogger);
+  app.use((_req, res, next) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (partyEnabled() && process.env.NODE_ENV === 'production' && (_req.path.startsWith('/app') || _req.path.startsWith('/api/party'))) {
+      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.scdn.co https://*.spotifycdn.com https://*.mzstatic.com; connect-src 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org; base-uri 'none'; object-src 'none'; form-action 'self'");
+    }
+    next();
+  });
+  app.use('/api/party', partyRoutes);
+  app.use('/internal/party', internalPartyRoutes);
+  app.use(express.json());
 
   app.use(healthRoutes);
   app.use(authRoutes);

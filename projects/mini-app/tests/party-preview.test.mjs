@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { partyPreviewPlugins } from '../dev/party-preview.ts';
+import { partyFailureMessage } from '../src/features/party/messages.ts';
+
+test('visual fixture is absent from production builds and disabled by default', () => {
+  assert.deepEqual(partyPreviewPlugins('build', true), []);
+  assert.deepEqual(partyPreviewPlugins('serve', false), []);
+});
+
+test('visual fixture serves config only; authentication and mutations are never mocked', () => {
+  let middleware;
+  const [plugin] = partyPreviewPlugins('serve', true);
+  assert.equal(plugin.apply, 'serve');
+  plugin.configureServer({ middlewares: { use(handler) { middleware = handler; } } });
+  let payload;
+  const response = { setHeader() {}, end(value) { payload = value; } };
+  middleware({ method: 'GET', url: '/api/party/config' }, response, () => assert.fail('Expected config fixture'));
+  assert.deepEqual(JSON.parse(payload), { enabled: true, telegramUrl: null, autoEnabled: false });
+  assert.equal(response.statusCode, 200);
+  for (const [method, url] of [
+    ['POST', '/api/party/config'],
+    ['GET', '/api/party/session'],
+    ['POST', '/api/party/session'],
+    ['POST', '/api/party/auth/start'],
+    ['POST', '/api/party/rooms'],
+    ['GET', '/api/profile'],
+  ]) {
+    let passed = false;
+    middleware({ method, url }, { end() { assert.fail('Unexpected fixture response'); } }, () => { passed = true; });
+    assert.equal(passed, true, `${method} ${url}`);
+  }
+});
+
+test('provider failures have actionable labels without telling guests to log in', () => {
+  assert.match(partyFailureMessage('unauthorized'), /reconnect Party Spotify/);
+  assert.match(partyFailureMessage('premium_required'), /Premium/);
+  assert.match(partyFailureMessage('insufficient_scope'), /grant playback access/);
+  assert.match(partyFailureMessage('device_unavailable'), /active device/);
+  assert.match(partyFailureMessage('delivery_settling'), /two-minute safety window/);
+  assert.equal(partyFailureMessage('recording_changed'), 'Spotify recording details changed. Resolve the request again and approve the version before adding.');
+  for (const code of ['apple_configuration', 'apple_unauthorized', 'apple_rate_limited', 'apple_unavailable', 'apple_invalid_response', 'apple_rejected']) {
+    assert.match(partyFailureMessage(code), /Apple Music/);
+    assert.doesNotMatch(partyFailureMessage(code), /Party needs attention/);
+  }
+});

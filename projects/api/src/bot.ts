@@ -27,6 +27,11 @@ export function createBot() {
 
   // Register username for all tap notifications and persist to DB
   bot.use(async (ctx, next) => {
+    // Party is a launch-only flow; do not persist or instrument guest identities.
+    if (/^\/party(?:@\w+)?(?:\s|$)/i.test(ctx.message?.text ?? '')) {
+      await next();
+      return;
+    }
     if (ctx.from) {
       const userId = ctx.from.id.toString();
       const username = ctx.from.username || ctx.from.first_name;
@@ -53,6 +58,7 @@ export function createBot() {
   });
 
   bot.command('help', async (ctx) => {
+    const partyEnabled = process.env.PARTY_ENABLED === 'true' && process.env.PARTY_TELEGRAM_BOT_USERNAME;
     await ctx.reply(
       '🎵 *Brewtify Bot*\n\n' +
       'Available commands:\n' +
@@ -60,6 +66,7 @@ export function createBot() {
       '/help \\- Show this help message\n' +
       '/ping \\- Check if the bot is alive\n' +
       '/login \\- Connect your Spotify account\n' +
+      (partyEnabled ? '/party \\- Open Party in Telegram \\(Library login is separate\\)\n' : '') +
       '/playlists \\- List your Spotify playlists\n' +
       '/schedule \\- Set auto\\-update schedule\n' +
       '/pause \\- Pause a playlist schedule\n' +
@@ -71,6 +78,18 @@ export function createBot() {
 
   bot.command('ping', async (ctx) => {
     await ctx.reply('🏓 Pong!');
+  });
+
+  bot.command('party', async (ctx) => {
+    const username = process.env.PARTY_TELEGRAM_BOT_USERNAME?.replace(/^@/, '');
+    if (process.env.PARTY_ENABLED !== 'true' || !username || !/^[A-Za-z0-9_]+$/.test(username)) {
+      await ctx.reply('Party is not available yet. Your existing Brewtify Library commands are unchanged.');
+      return;
+    }
+    await ctx.reply(
+      'Open Party in the Brewtify Mini App to host or join. Guests need no music-provider login. Requests and moderation stay in the Mini App.',
+      { reply_markup: { inline_keyboard: [[{ text: 'Open Party', url: `https://t.me/${username}?startapp=party` }]] } },
+    );
   });
 
   bot.command('login', async (ctx) => {

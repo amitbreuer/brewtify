@@ -68,3 +68,151 @@ model UserPreferences {
 
   @@map("user_preferences")
 }
+
+model PartyMiniAppSession {
+  id        String   @id
+  tokenHash String   @unique @map("token_hash")
+  initHash  String   @unique @map("init_hash")
+  principal String
+  csrf      String
+  expiresAt DateTime @map("expires_at")
+  authorizations PartyAuthorization[]
+  memberships PartyMembership[]
+  @@index([expiresAt])
+  @@map("party_mini_app_sessions")
+}
+
+model PartyAuthorization {
+  id              String   @id
+  sessionId       String   @map("session_id")
+  principal       String
+  ticketHash      String   @unique @map("ticket_hash")
+  stateHash       String?  @unique @map("state_hash")
+  browserHash     String?  @map("browser_hash")
+  encryptedVerifier String @map("encrypted_verifier")
+  salt            String
+  status          String   @default("pending")
+  error           String?
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  session PartyMiniAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@index([sessionId, createdAt])
+  @@map("party_authorizations")
+}
+
+model PartyHostSession {
+  id                    String   @id
+  principal             String   @unique
+  accountKey            String   @unique @map("account_key")
+  encryptedAccessToken  String   @map("encrypted_access_token")
+  encryptedRefreshToken String   @map("encrypted_refresh_token")
+  salt                  String
+  scopes                String[]
+  tokenExpiresAt        DateTime @map("token_expires_at")
+  expiresAt             DateTime @map("expires_at")
+  @@map("party_host_sessions")
+}
+
+model PartyRoom {
+  id            String   @id
+  owner         String
+  accountKey    String   @map("account_key")
+  joinHash      String   @unique @map("join_hash")
+  encryptedJoin String   @map("encrypted_join")
+  salt          String
+  deviceId      String   @map("device_id")
+  status        String   @default("open")
+  mode          String   @default("host_approval")
+  blockedReason String?  @map("blocked_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+  expiresAt     DateTime @map("expires_at")
+  memberships PartyMembership[]
+  requests PartyRequest[]
+  jobs PartyJob[]
+  attempts PartyDeliveryAttempt[]
+  @@index([expiresAt])
+  @@map("party_rooms")
+}
+
+model PartyMembership {
+  roomId      String   @map("room_id")
+  sessionId   String   @map("session_id")
+  participant String
+  room PartyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  session PartyMiniAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@id([roomId, sessionId])
+  @@map("party_memberships")
+}
+
+model PartyRequest {
+  id            String   @id
+  roomId        String   @map("room_id")
+  participant   String
+  submissionKey String   @map("submission_key")
+  displayName   String   @map("display_name")
+  sourceUrl     String   @map("source_url")
+  source        Json?
+  selected      Json?
+  confidence    String?
+  status        String   @default("pending")
+  failureCode   String?  @map("failure_code")
+  sequence      BigInt   @unique @default(autoincrement())
+  revision      BigInt   @unique @default(autoincrement())
+  approvedOrder BigInt?  @map("approved_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @map("updated_at")
+  room PartyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  candidates PartyMatchCandidate[]
+  jobs PartyJob[]
+  attempts PartyDeliveryAttempt[]
+  @@unique([roomId, participant, submissionKey])
+  @@index([roomId, updatedAt, id])
+  @@map("party_requests")
+}
+
+model PartyMatchCandidate {
+  requestId String @map("request_id")
+  trackId   String @map("track_id")
+  metadata  Json
+  request PartyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@id([requestId, trackId])
+  @@map("party_match_candidates")
+}
+
+model PartyJob {
+  id           String   @id
+  roomId       String   @map("room_id")
+  requestId    String   @map("request_id")
+  kind         String
+  status       String   @default("pending")
+  generation   Int      @default(0)
+  failures     Int      @default(0)
+  dueAt        DateTime @default(now()) @map("due_at")
+  dispatchedAt DateTime? @map("dispatched_at")
+  room PartyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request PartyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@unique([requestId, kind])
+  @@index([status, dueAt])
+  @@map("party_jobs")
+}
+
+model PartyDeliveryAttempt {
+  id        String   @id
+  requestId String   @map("request_id")
+  roomId    String   @map("room_id")
+  outcome   String   @default("sending")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+  room PartyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request PartyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@index([roomId, outcome])
+  @@map("party_delivery_attempts")
+}
+
+model PartyThrottle {
+  key       String   @id
+  hits      Int
+  expiresAt DateTime @map("expires_at")
+  @@index([expiresAt])
+  @@map("party_throttles")
+}

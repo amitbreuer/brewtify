@@ -39,6 +39,7 @@ jobs:
           source: .
           env_vars: |
             NODE_ENV=production
+            PARTY_ENABLED=${{ vars.PARTY_ENABLED || 'false' }}
           secrets: |
             DATABASE_URL=DATABASE_URL:latest
             SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest
