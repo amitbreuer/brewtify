@@ -47,8 +47,9 @@ Required before real pilot traffic:
   Party now requests only `user-modify-playback-state`; device discovery and its
   read-playback scope are no longer used. Existing grants with the extra read
   scope remain compatible until revoked or reauthorized.
-  The Premium checkbox is an explicit requirement, not proof from a removed
-  profile property. Only an explicit provider Premium error is labeled Premium.
+  Start party opens OAuth when authorization is needed, without a Premium checkbox
+  or client declaration. Connected hosts reuse their authorization. Spotify still
+  enforces Premium for playback; only an explicit provider Premium error is labeled Premium.
 - Free iTunes Store exact-ID lookup reachable from the service for supported
   Apple Music song links. No Apple Developer membership, keys, tokens, Apple ID
   or guest provider authorization is required. Coverage is not all Apple Music;
@@ -67,7 +68,7 @@ Required before real pilot traffic:
 
 Missing configuration returns an actionable error; it is never a catalog no-match
 or an authentication bypass. Brewtify has no host allowlist: when Party is enabled,
-any account that can authorize the Spotify app can host after confirming Premium.
+any account that can authorize the Spotify app can start a party.
 Spotify's provider-owned access restrictions still apply; removing Brewtify's list
 does not expand the app's Spotify access or enable Party in production.
 
@@ -241,11 +242,33 @@ publish search results in the room feed.
 
 Canonical Spotify track URLs, share query parameters, and localized `intl-*`
 track paths normalize to the same track ID. Direct lookup and pre-delivery
-revalidation both request `market=from_token`; search also uses that host market.
+revalidation both request `market=from_token`. Search omits `market`, using the
+country associated with the host's user token, as documented by
+[Spotify search](https://developer.spotify.com/documentation/web-api/reference/search).
+Read-only probes on 2026-09-23 confirmed search with `market=from_token` returned
+403 "Insufficient client scope" with Party's playback-only grant, while the same
+search without it returned 200 with positive playability. Direct track lookup
+with `market=from_token` also returned 200. No additional scope is requested.
 This requests positive playability evidence rather than assuming an omitted
 `is_playable` means playable. Relinking, restrictions, unknown playability, and
 recording drift still prevent delivery. A passing mocked flow is not live
 Spotify acceptance; previously unavailable requests are not automatically retried.
+
+Catalog 403 errors have separate codes (`catalog_insufficient_scope`,
+`catalog_forbidden`), not misleading playback-permission instructions. A failed
+catalog job does not block the room's playback or retry indefinitely.
+
+Queue acceptance remains the documented
+[204 response](https://developer.spotify.com/documentation/web-api/reference/add-to-queue).
+The reported unknown deliveries could not be attributed to a specific provider
+failure from the existing logs; an internal job HTTP 204 is not evidence of a
+Spotify HTTP 204. Queue failures now log only operation, outcome, code, HTTP status,
+phase, an allowlisted transport error code, and the uncertainty flag. No tokens,
+URLs, song/user identifiers, headers, or provider bodies are logged. Timeouts,
+5xx responses, redirects, and unexpected success responses remain uncertain,
+never automatically repeated. These diagnostics require deployment and a separately
+authorized user action to establish the remaining live queue failure; no diagnostic
+queue commands or automatic retries of existing unknown requests were performed.
 
 The host's **Invite friends** card starts collapsed. Click or keyboard-activate
 its native disclosure to reveal the same QR code, selectable invitation URL,

@@ -109,7 +109,7 @@ test('interactive demo renders host, guest and direct start with no API traffic'
   await page.getByRole('button', { name: 'Start screen', exact: true }).click();
   assert.equal(await page.getByRole('heading', { name: 'Host setup', exact: true }).count(), 0);
   assert.equal(await page.getByLabel('Active Spotify device', { exact: true }).count(), 0);
-  await page.getByRole('checkbox', { name: 'I have Spotify Premium and will host playback.' }).check();
+  assert.equal(await page.getByRole('checkbox').count(), 0);
   await page.getByRole('button', { name: 'Start party', exact: true }).click();
   await page.getByRole('button', { name: 'End party', exact: true }).waitFor();
   page.once('dialog', dialog => dialog.dismiss());
@@ -408,7 +408,7 @@ test('hosts go from authorization directly to a room, resume safely, and can ret
         else if (path.endsWith('/session')) data = { csrfToken: 'start-csrf', hostConnected: connected, room };
         else if (path.endsWith('/auth/status')) data = { status: auth, ...(auth === 'failed' ? { error: 'authorization_cancelled' } : {}) };
         else if (path.endsWith('/auth/start')) {
-          assert.deepEqual(http.postDataJSON(), { premiumConfirmed: true });
+          assert.deepEqual(http.postDataJSON(), {});
           authorizations++;
           auth = scenario === 'authorization-failure' ? 'failed' : 'complete';
           connected = auth === 'complete';
@@ -433,10 +433,10 @@ test('hosts go from authorization directly to a room, resume safely, and can ret
       });
       await page.goto(`${base}/app/?section=party`);
       if (scenario === 'new-host' || scenario === 'authorization-failure') {
-        await page.getByText('Host with a Spotify account authorized for this app.', { exact: false }).waitFor();
+        await page.getByRole('heading', { name: 'Start a party', exact: true }).waitFor();
         assert.equal(await page.getByText(/allowlisted|private pilot/i).count(), 0);
-        assert.equal(await page.getByRole('button', { name: 'Start party', exact: true }).isDisabled(), true);
-        await page.getByRole('checkbox', { name: 'I have Spotify Premium and will host playback.' }).check();
+        assert.equal(await page.getByRole('button', { name: 'Start party', exact: true }).isDisabled(), false);
+        assert.equal(await page.getByRole('checkbox').count(), 0);
         await page.getByRole('button', { name: 'Start party', exact: true }).click();
       } else if (scenario === 'reconnect') {
         await page.getByRole('button', { name: 'Reconnect Spotify', exact: true }).click();

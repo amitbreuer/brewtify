@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { partyPreviewPlugins } from '../dev/party-preview.ts';
 import { partyFailureMessage } from '../src/features/party/messages.ts';
 import { PartyDemoClient } from '../dev/party-demo.ts';
+import { PartyError, errorText } from '../src/features/party/api.ts';
 
 test('visual fixture is absent from production builds and disabled by default', () => {
   assert.deepEqual(partyPreviewPlugins('build', true), []);
@@ -37,6 +38,11 @@ test('provider failures have actionable labels without telling guests to log in'
   assert.match(partyFailureMessage('unauthorized'), /reconnect Party Spotify/);
   assert.match(partyFailureMessage('premium_required'), /Premium/);
   assert.match(partyFailureMessage('insufficient_scope'), /grant playback access/);
+  for (const code of ['catalog_insufficient_scope', 'catalog_forbidden']) {
+    const message = errorText(new PartyError('Provider failed', code, 403));
+    assert.match(message, /song lookup/);
+    assert.doesNotMatch(message, /playback permission is missing|grant playback access|Premium/i);
+  }
   assert.match(partyFailureMessage('forbidden'), /Spotify app access and device restrictions/);
   assert.match(partyFailureMessage('forbidden'), /does not necessarily mean Premium is missing/);
   assert.doesNotMatch(partyFailureMessage('forbidden'), /allowlist|pilot/i);

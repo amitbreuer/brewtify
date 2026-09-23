@@ -195,7 +195,7 @@ async function guest(id) {
   };
 }
 async function authorize(user) {
-  const start = await call('/auth/start', user, { premiumConfirmed: true });
+  const start = await call('/auth/start', user, {});
   assert.equal(start.response.status, 200, JSON.stringify(start.data));
   const link = new URL(start.data.authorizationUrl);
   const launch = await call(
@@ -282,15 +282,16 @@ test('signed sessions reject raw IDs, origin forgery, tampering and launch repla
       await call(
         '/auth/start',
         host,
-        { premiumConfirmed: true },
+        {},
         { 'X-Party-CSRF': 'wrong' }
       )
     ).response.status,
     403
   );
   assert.equal(
-    (await call('/auth/start', host, {})).data.error.code,
-    'premium_confirmation_required'
+    (await call('/auth/start', host, {})).response.status,
+    200,
+    'Starting OAuth requires no Premium declaration'
   );
   assert.equal(
     (await store.rows('SELECT * FROM users')).length,
@@ -307,7 +308,7 @@ test('signed sessions reject raw IDs, origin forgery, tampering and launch repla
   );
 });
 test('OAuth browser state mismatch, cancellation, expiration and one-use tickets', async () => {
-  const start = await call('/auth/start', outsider, { premiumConfirmed: true });
+  const start = await call('/auth/start', outsider, {});
   const link = new URL(start.data.authorizationUrl);
   const route = `${link.pathname.replace('/api/party', '')}${link.search}`;
   const launched = await call(route);
@@ -338,7 +339,7 @@ test('OAuth browser state mismatch, cancellation, expiration and one-use tickets
     (await call('/auth/status', outsider)).data.error,
     'authorization_cancelled'
   );
-  const next = await call('/auth/start', outsider, { premiumConfirmed: true });
+  const next = await call('/auth/start', outsider, {});
   const nextLink = new URL(next.data.authorizationUrl);
   await store.rows(
     "UPDATE party_authorizations SET expires_at=now()-interval '1 second' WHERE status='pending'"
@@ -358,7 +359,7 @@ test('OAuth still rejects missing playback permission and refresh credentials', 
     [{ ...tokens, refreshToken: undefined }, 'provider_response'],
   ]) {
     SpotifyClient.prototype.exchange.mock.mockImplementationOnce(async () => response);
-    const start = await call('/auth/start', outsider, { premiumConfirmed: true });
+    const start = await call('/auth/start', outsider, {});
     assert.equal(start.response.status, 200);
     const link = new URL(start.data.authorizationUrl);
     const launched = await call(`${link.pathname.replace('/api/party', '')}${link.search}`);
@@ -418,7 +419,7 @@ test('previously unlisted Spotify account completes browser PKCE and host setup 
   );
 });
 test('same Spotify account cannot be claimed by another Telegram principal', async () => {
-  const start = await call('/auth/start', member, { premiumConfirmed: true });
+  const start = await call('/auth/start', member, {});
   const link = new URL(start.data.authorizationUrl);
   const launched = await call(
     `${link.pathname.replace('/api/party', '')}${link.search}`
@@ -1237,6 +1238,88 @@ test('read-only room search and explicit submitter selection preserve authorizat
   assert.equal((await call(`${path}/selections`, member, selection)).data.error.code, 'room_expired');
 });
 
+test('catalog permission failures never masquerade as playback failures or block unrelated delivery', async t => {
+  await store.rows('DELETE FROM party_throttles');
+  await authorize(host);
+  const { room: active } = await makeRoom(host);
+  assert.equal((await call(`/rooms/${active.id}/action`, host, { action: 'mode', mode: 'auto' })).response.status, 200);
+  const before = queueCalls;
+  for (const kind of ['resolve', 'deliver']) {
+    for (const code of ['catalog_insufficient_scope', 'catalog_forbidden']) {
+      const id = await song(host, active.id);
+      if (kind === 'deliver') await runPending(id, 'resolve');
+      const failing = t.mock.method(SpotifyClient.prototype, 'track', async () => { throw new SpotifyError(code, 403); });
+      await runPending(id, kind);
+      await runPending(id, kind);
+      failing.mock.restore();
+      const [receipt] = await store.rows('SELECT status,failure_code FROM party_requests WHERE id=$1', [id]);
+      assert.deepEqual(receipt, { status: 'failed', failure_code: code });
+      assert.equal((await store.rows('SELECT blocked_reason FROM party_rooms WHERE id=$1', [active.id]))[0].blocked_reason, null);
+      assert.equal((await store.rows('SELECT id FROM party_delivery_attempts WHERE request_id=$1', [id])).length, 0);
+    }
+  }
+  assert.equal(queueCalls, before);
+  const good = await song(host, active.id);
+  await runPending(good, 'resolve');
+  await runPending(good, 'deliver');
+  assert.equal(queueCalls, before + 1);
+  await call(`/rooms/${active.id}/action`, host, { action: 'close' });
+});
+
+test('unexpected queue responses persist one unknown attempt and safe phase diagnostics without resending', async t => {
+  await store.rows('DELETE FROM party_throttles');
+  await authorize(host);
+  const originalFetch = globalThis.fetch;
+  t.mock.method(SpotifyClient.prototype, 'enqueue', spotifyEnqueue);
+  const logs = [];
+  t.mock.method(console, 'warn', line => logs.push(line));
+  for (const response of [
+    () => new Response(null, { status: 202 }),
+    () => new Response('private provider body', { status: 200 }),
+    () => { throw new TypeError('private token URL', { cause: Object.assign(new Error('private host'), { code: 'ECONNRESET' }) }); },
+  ]) {
+    const { room: active } = await makeRoom(host);
+    assert.equal((await call(`/rooms/${active.id}/action`, host, { action: 'mode', mode: 'auto' })).response.status, 200);
+    const id = await song(host, active.id);
+    await runPending(id, 'resolve');
+    let writes = 0;
+    const mocked = t.mock.method(globalThis, 'fetch', async (input, options) => {
+      const url = new URL(String(input));
+      if (url.origin === base) return originalFetch(input, options);
+      assert.equal(url.origin, 'https://api.spotify.com');
+      assert.equal(url.pathname, '/v1/me/player/queue');
+      assert.equal(options.method, 'POST');
+      writes++;
+      return response();
+    });
+    await runPending(id, 'deliver');
+    await runPending(id, 'deliver');
+    assert.equal(writes, 1);
+    assert.deepEqual(await store.rows('SELECT outcome FROM party_delivery_attempts WHERE request_id=$1', [id]), [{ outcome: 'unknown' }]);
+    assert.deepEqual(await store.rows('SELECT status,failure_code FROM party_requests WHERE id=$1', [id]), [{ status: 'failed', failure_code: 'delivery_unknown' }]);
+    assert.equal((await store.rows('SELECT blocked_reason FROM party_rooms WHERE id=$1', [active.id]))[0].blocked_reason, 'delivery_unknown');
+    const retry = await call(`/rooms/${active.id}/requests/${id}/action`, host, { action: 'retry' });
+    assert.equal(retry.data.error.code, 'duplicate_risk_confirmation_required');
+    assert.equal(writes, 1);
+    await call(`/rooms/${active.id}/action`, host, { action: 'close' });
+    mocked.mock.restore();
+    // Closing disconnects the host; each new room needs a fresh authorization.
+    await store.rows('DELETE FROM party_throttles');
+    await authorize(host);
+  }
+  const diagnostics = logs.filter(line => line.includes('Party provider operation failed')).map(line => JSON.parse(line.slice(line.indexOf('{'))));
+  assert.deepEqual(diagnostics.map(item => item.phase), ['response_status', 'response_decode', 'request']);
+  assert.deepEqual(diagnostics.map(item => item.status), [202, 200, undefined]);
+  assert.equal(diagnostics[2].transportCode, 'ECONNRESET');
+  for (const item of diagnostics) {
+    assert.equal(item.operation, 'enqueue');
+    assert.equal(item.outcome, 'unknown');
+    assert.equal(item.unknownDelivery, true);
+    assert.ok(Object.keys(item).every(key => ['operation', 'outcome', 'code', 'status', 'phase', 'transportCode', 'unknownDelivery'].includes(key)));
+  }
+  assert.doesNotMatch(logs.join('\\n'), /private provider body|private token URL|private host|Bearer|encrypted_access_token/);
+});
+
 test('selected search result reaches one mocked 204 with host-market revalidation, failing closed on changed evidence', async t => {
   await store.rows('DELETE FROM party_throttles');
   await authorize(host);
@@ -1261,7 +1344,8 @@ test('selected search result reaches one mocked 204 with host-market revalidatio
     }
     assert.equal(url.origin, 'https://api.spotify.com');
     if (url.pathname === '/v1/search') {
-      metadataMarkets.push(url.searchParams.get('market'));
+      if (url.searchParams.has('market'))
+        return Response.json({ error: { message: 'Insufficient client scope' } }, { status: 403 });
       return Response.json({ tracks: { items: [track] } });
     }
     if (url.pathname === `/v1/tracks/${trackId}`) {
@@ -1305,7 +1389,7 @@ test('selected search result reaches one mocked 204 with host-market revalidatio
     assert.deepEqual(attempts, failureCode ? [] : [{ outcome: 'accepted' }]);
     assert.equal(sends, 1, 'only positive unchanged evidence sends, and a completed job never resends');
   }
-  assert.equal(metadataMarkets.length, 12);
+  assert.equal(metadataMarkets.length, 6);
   assert.ok(metadataMarkets.every(market => market === 'from_token'));
   await call(`${route}/action`, host, { action: 'close' });
 });

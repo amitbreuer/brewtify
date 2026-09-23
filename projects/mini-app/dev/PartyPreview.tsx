@@ -17,7 +17,6 @@ export default function PartyPreview() {
   const initial = new URLSearchParams(window.location.search).get('demo');
   const [view, setView] = useState<View>(initial === 'guest' ? 'guest' : initial === 'start' || initial === 'setup' ? 'start' : 'host');
   const [reset, setReset] = useState(0);
-  const [premium, setPremium] = useState(false);
   const [scenario, setScenario] = useState<DemoScenario>('match');
 
   function show(next: View) {
@@ -54,8 +53,7 @@ export default function PartyPreview() {
       {view === 'start' ? (
         <section className="party-card party-stack">
           <h2>Start a party</h2>
-          <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium and will host playback.</label>
-          <button disabled={!premium} onClick={() => show('host')}>Start party</button>
+          <button onClick={() => show('host')}>Start party</button>
         </section>
       ) : <DemoRoom key={`${view}-${reset}-${scenario}`} isHost={view === 'host'} scenario={scenario} onReconnect={() => show('start')} />}
     </main>
