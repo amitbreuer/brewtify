@@ -39,6 +39,7 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   assert.equal(await page.getByRole('article').getByRole('link').count(), 0);
   assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 0);
   assert.equal(await page.getByRole('heading', { name: 'Your party', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: 'Party', exact: true }).count(), 0);
   assert.equal(await page.getByText('Song links only. No music account needed.', { exact: true }).count(), 0);
   const endParty = page.getByRole('button', { name: 'End party', exact: true });
   assert.equal(await endParty.innerText(), '');
@@ -62,10 +63,26 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   await page.getByRole('heading', { name: 'Your songs', exact: true }).waitFor();
   assert.equal(await page.getByRole('article').count(), 1);
   assert.equal(await page.getByRole('textbox').count(), 1);
+  assert.equal(await page.getByRole('heading', { name: 'Party', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: 'You’re invited', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'End party', exact: true }).count(), 0);
+  assert.equal(await page.locator('form').evaluate(element => element.previousElementSibling === null), true);
+  const sunrise = page.getByRole('article');
+  assert.deepEqual((await sunrise.innerText()).split('\n').filter(Boolean), ['Sunrise Again', 'Sunday Club · Slow Mornings']);
+  assert.equal(await sunrise.getByRole('link').count(), 0);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.ok((await sunrise.boundingBox()).height <= 80);
+    assert.equal((await sunrise.locator('img').boundingBox()).width, 48);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.getByText('Song links only. No music account needed.', { exact: true }).count(), 0);
   await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill('https://open.spotify.com/track/demo');
   await page.getByRole('button', { name: 'Add song', exact: true }).click();
   await page.getByRole('heading', { name: 'Your sample song', exact: true }).waitFor();
-  assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 2);
+  assert.equal(await page.getByRole('article').count(), 2);
+  assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Host setup', exact: true }).click();
   await page.getByLabel('Active Spotify device', { exact: true }).selectOption('living-room');
   await page.getByRole('button', { name: 'Create demo party', exact: true }).click();

@@ -89,7 +89,7 @@
 }
 .party-page .party-secondary { background: #303030; color: white; border-color: #737373; }
 .party-page .party-danger { background: #5b2020; color: #fff; border-color: #e5a1a1; }
-.party-page .party-end-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; background: #292020; color: #f0aaaa; border-color: #694141; }
+.party-page .party-end-button { display: grid; place-items: center; width: 44px; height: 44px; margin-inline-start: auto; padding: 0; background: #292020; color: #f0aaaa; border-color: #694141; }
 .party-page button:disabled { opacity: 0.5; cursor: not-allowed; }
 .party-page a:not(.party-button) { color: #75e49c; text-decoration: underline; overflow-wrap: anywhere; }
 .party-page :focus-visible, .section-tabs :focus-visible { outline: 3px solid #90edb1; outline-offset: 3px; }

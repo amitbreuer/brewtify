@@ -107,7 +107,7 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
       await client.request(`${path}/requests`, { ...data, submissionKey });
       setUrl('');
       submission.current = null;
-      setReceipt(room.isHost ? 'Song submitted.' : 'Song submitted. Watch below while we find it and add it to Spotify.');
+      setReceipt('Song submitted.');
       await readFeed();
     });
   }
@@ -131,19 +131,17 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
 
   return (
     <div className="party-stack">
-      <section className={room.isHost ? 'party-stack' : 'party-card party-stack'}>
-        {room.isHost ? (
+      {(room.isHost || inactive || room.status === 'locked' || room.blockedReason) && <section className="party-stack">
+        {room.isHost && !inactive && (
           <header className="party-heading">
-            <h1>Party</h1>
-            {!inactive && <button disabled={busy} className="party-end-button" aria-label="End party" title="End party" onClick={closeRoom}>
+            <button disabled={busy} className="party-end-button" aria-label="End party" title="End party" onClick={closeRoom}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <path d="M12 3v9M6.3 5.8a9 9 0 1 0 11.4 0" />
               </svg>
-            </button>}
+            </button>
           </header>
-        ) : <div className="party-heading"><h2>You’re invited</h2><span className="party-badge">{status}</span></div>}
-        {!room.isHost && !inactive && <p className="party-muted">{room.mode === 'auto' ? 'Paste a link. Songs are added automatically.' : 'This older party needs the host to confirm songs.'}</p>}
-        {inactive && <p role="status">{room.isHost ? `Party ${status === 'expired' ? 'expired' : 'ended'}.` : `This party has ${status === 'expired' ? 'expired' : 'closed'}. No more songs can be added. Already queued songs remain in Spotify.`}</p>}
+        )}
+        {inactive && <p role="status">Party {status === 'expired' ? 'expired' : 'ended'}.</p>}
         {room.status === 'locked' && <p role="status">New songs are paused.</p>}
         {room.blockedReason && <div className="party-warning" role="status">{partyFailureMessage(room.blockedReason)}</div>}
         {room.isHost && !inactive && (room.status === 'locked' || room.blockedReason || showDevices) && (
@@ -166,7 +164,7 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
             )}
           </>
         )}
-      </section>
+      </section>}
       {error && <div className="party-error" role="alert">{error}</div>}
       {room.isHost && !inactive && (
         <section className="party-card party-stack">
@@ -184,11 +182,10 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
       {!inactive && (
         <form className="party-card party-stack" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <h2>Add a song</h2>
-          <label className={room.isHost ? 'sr-only' : undefined} htmlFor="party-song">Spotify or Apple Music song link</label>
-          <input id="party-song" value={url} onChange={(event) => { setUrl(event.target.value); setReceipt(''); }} required maxLength={2048} autoComplete="off" placeholder={room.isHost ? 'Paste a Spotify or Apple Music link' : 'https://open.spotify.com/track/…'} disabled={room.status !== 'open' || busy} />
-          {!room.isHost && <p className="party-muted">Song links only. No music account needed.</p>}
+          <label className="sr-only" htmlFor="party-song">Spotify or Apple Music song link</label>
+          <input id="party-song" value={url} onChange={(event) => { setUrl(event.target.value); setReceipt(''); }} required maxLength={2048} autoComplete="off" placeholder="Paste a Spotify or Apple Music link" disabled={room.status !== 'open' || busy} />
           <button disabled={busy || room.status !== 'open' || !url.trim()}>Add song</button>
-          {receipt && <p className={room.isHost ? 'sr-only' : undefined} role="status">{receipt}</p>}
+          {receipt && <p className="sr-only" role="status">{receipt}</p>}
         </form>
       )}
       <section className="party-stack" aria-label={room.isHost ? 'Party songs' : 'Your songs'}>
@@ -200,7 +197,6 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
           <RequestCard key={request.id} request={request} isHost={room.isHost} actionable={!inactive} busy={busy} onAction={(id, action, candidate) => void requestAction(id, action, candidate)} />
         ))}
       </section>
-      {!room.isHost && <p className="party-muted">Added means Spotify accepted the song, not that it has played. Uncertain versions need the host to choose a match.</p>}
     </div>
   );
 }

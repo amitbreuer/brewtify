@@ -150,11 +150,12 @@ it added immediately with no approval or display-name form. There is no room
 settings panel. End party and setup device selection update local sample state.
 Reset samples restores the example songs.
 
-The host room uses an accessible end-party icon and compact song rows containing
+The host room uses an accessible end-party icon. Both host and guest rooms omit
+the Party title and welcome card, and use the same compact song rows containing
 artwork, title, artist and album, without success labels, provider links or
 descriptive copy. Pending, failed and ambiguous songs retain the information and
 controls needed to avoid silent failures or selecting the wrong recording.
-Guest receipts are unchanged.
+Guests still see only their own songs and never receive host controls.
 
 This is a clearly labeled browser-only demo, not a Telegram session. It never
 calls Party APIs, authorizes a provider or queues music. QR links use
