@@ -122,7 +122,7 @@ model PartyRoom {
   salt          String
   deviceId      String   @map("device_id")
   status        String   @default("open")
-  mode          String   @default("host_approval")
+  mode          String   @default("auto")
   blockedReason String?  @map("blocked_reason")
   createdAt     DateTime @default(now()) @map("created_at")
   expiresAt     DateTime @map("expires_at")

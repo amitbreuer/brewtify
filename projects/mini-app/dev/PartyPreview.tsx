@@ -8,8 +8,8 @@ type View = 'host' | 'guest' | 'setup';
 function DemoRoom({ isHost, onSetup }: { isHost: boolean; onSetup: () => void }) {
   const [client] = useState(() => new PartyDemoClient(isHost));
   const [room, setRoom] = useState(client.room);
-  return <Room client={client} initialRoom={room} autoEnabled
-    onRoomChange={setRoom} onReconnect={onSetup} onDisconnect={onSetup} />;
+  return <Room client={client} initialRoom={room}
+    onRoomChange={setRoom} onReconnect={onSetup} />;
 }
 
 export default function PartyPreview() {
@@ -44,11 +44,11 @@ export default function PartyPreview() {
           <h2>Host setup</h2>
           <p>Spotify playback is connected for Party only (sample state).</p>
           <DevicePicker devices={demoDevices} value={device} onChange={setDevice} onRefresh={() => setDevice('')} busy={false} />
-          <p className="party-muted">Start with host approval. No test song will be added. Choose only the device where you intend to listen.</p>
+          <p className="party-muted">Friends can add songs immediately. No approvals or display names. Choose where you intend to listen.</p>
           <button disabled={device !== 'living-room'} onClick={() => show('host')}>Create demo party</button>
         </section>
       ) : <DemoRoom key={`${view}-${reset}`} isHost={view === 'host'} onSetup={() => show('setup')} />}
-      <footer className="party-muted">This preview uses the actual room, request, moderation, QR, and device components with a local sample-data client. Production still requires verified Telegram identity and separate Spotify playback consent.</footer>
+      <footer className="party-muted">Sample songs only. This preview never connects to Spotify or plays music.</footer>
     </main>
   );
 }

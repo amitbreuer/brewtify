@@ -33,15 +33,18 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   await page.goto(`${base}/app/?section=party&demo=host`);
   await page.getByText('INTERACTIVE PREVIEW', { exact: true }).waitFor();
   const afterglow = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Afterglow', exact: true }) });
-  await afterglow.getByRole('button', { name: 'Approve', exact: true }).click();
   await afterglow.getByText('Added to host’s Spotify queue', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: /Approve|Reject|Lock requests|Disconnect Party Spotify|Confirm playback device/ }).count(), 0);
+  assert.equal(await page.getByLabel('Moderation mode', { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Display name', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Guest view', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your requests', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Your songs', exact: true }).waitFor();
   assert.equal(await page.getByRole('article').count(), 1);
-  await page.getByLabel('Display name', { exact: true }).fill('You');
+  assert.equal(await page.getByRole('textbox').count(), 1);
   await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill('https://open.spotify.com/track/demo');
-  await page.getByRole('button', { name: 'Submit request', exact: true }).click();
+  await page.getByRole('button', { name: 'Add song', exact: true }).click();
   await page.getByRole('heading', { name: 'Your sample song', exact: true }).waitFor();
+  assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 2);
   await page.getByRole('button', { name: 'Host setup', exact: true }).click();
   await page.getByLabel('Active Spotify device', { exact: true }).selectOption('living-room');
   await page.getByRole('button', { name: 'Create demo party', exact: true }).click();
@@ -150,7 +153,7 @@ test('disabled feature preserves Library-only navigation', async () => {
   await page.close();
 });
 
-test('host moderation uses the Party CSRF contract without a provider login request', async () => {
+test('recording confirmation and nameless submissions retain the Party CSRF contract', async () => {
   const page = await previewPage({ viewport: { width: 390, height: 844 } });
   const failures = [];
   page.on('pageerror', (error) => failures.push(error.message));
@@ -185,6 +188,7 @@ test('host moderation uses the Party CSRF contract without a provider login requ
     updatedAt: new Date().toISOString(),
   };
   let approval;
+  let submission;
   await page.route('https://telegram.org/js/telegram-web-app.js', (route) =>
     route.fulfill({
       contentType: 'text/javascript',
@@ -204,8 +208,12 @@ test('host moderation uses the Party CSRF contract without a provider login requ
       data = {
         inviteUrl: `https://t.me/test_party_bot?startapp=p_${'a'.repeat(43)}`,
       };
-    else if (path.endsWith('/requests'))
-      data = { room, requests: [request], nextCursor: '1' };
+    else if (path.endsWith('/requests')) {
+      if (http.method() === 'POST') {
+        submission = { body: http.postDataJSON(), csrf: http.headers()['x-party-csrf'] };
+        data = { id: 'new-song' };
+      } else data = { room, requests: [request], nextCursor: '1' };
+    }
     else if (path.endsWith('/action')) {
       approval = {
         body: http.postDataJSON(),
@@ -222,14 +230,23 @@ test('host moderation uses the Party CSRF contract without a provider login requ
     });
   });
   await page.goto(`${base}/app/?section=party`);
-  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.getByRole('button', { name: 'Add this recording', exact: true }).click();
   await page
-    .getByRole('button', { name: 'Approve', exact: true })
+    .getByRole('button', { name: 'Add this recording', exact: true })
     .waitFor({ state: 'hidden' });
   assert.deepEqual(approval, {
     body: { action: 'approve' },
     csrf: 'test-csrf',
   });
+  const link = 'https://open.spotify.com/track/0123456789ABCDEFGHIJKL';
+  await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill(link);
+  const submitted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/requests'));
+  await page.getByRole('button', { name: 'Add song', exact: true }).click();
+  await submitted;
+  assert.equal(submission.csrf, 'test-csrf');
+  assert.equal(submission.body.url, link);
+  assert.match(submission.body.submissionKey, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(Object.keys(submission.body).sort(), ['submissionKey', 'url']);
   assert.equal(await page.getByRole('img', { name: /QR/i }).count(), 1);
   assert.equal(
     await page.evaluate(

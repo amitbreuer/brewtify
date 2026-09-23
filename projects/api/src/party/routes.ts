@@ -154,7 +154,7 @@ partyRoutes.get('/config', (_req, res) => {
       partyEnabled() && process.env.PARTY_TELEGRAM_BOT_USERNAME
         ? telegramUrl()
         : null,
-    autoEnabled: partyEnabled() && process.env.PARTY_AUTO_ENABLED === 'true',
+    autoEnabled: partyEnabled(),
   });
 });
 partyRoutes.use((_req, _res, next) => {
@@ -215,13 +215,14 @@ partyRoutes.get('/devices', async (_req, res) => {
   res.json({ devices: await devices(who(res)) });
 });
 partyRoutes.post('/rooms', async (req, res) => {
-  if (req.body?.mode && req.body.mode !== 'host_approval')
+  const mode: unknown = req.body?.mode ?? 'auto';
+  if (mode !== 'auto' && mode !== 'host_approval')
     throw new PartyError(
       400,
-      'approval_default',
-      'Start in host-approval mode.'
+      'invalid_mode',
+      'Invalid party mode.'
     );
-  res.status(201).json(await createRoom(who(res), field(req, 'deviceId', 256)));
+  res.status(201).json(await createRoom(who(res), field(req, 'deviceId', 256), mode));
 });
 partyRoutes.post('/join', async (req, res) => {
   await throttle(`join:${who(res).principal}`, 12, 60);
@@ -248,7 +249,7 @@ partyRoutes.post('/rooms/:id/requests', async (req, res) => {
       await submit(
         who(res),
         param(req, 'id'),
-        field(req, 'displayName', 40),
+        req.body?.displayName === undefined ? 'Guest' : field(req, 'displayName', 40),
         field(req, 'url'),
         field(req, 'submissionKey', 80)
       )

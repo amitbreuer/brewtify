@@ -153,7 +153,8 @@ export async function validateDevice(
 }
 export async function createRoom(
   who: MiniSession,
-  deviceId: string
+  deviceId: string,
+  mode: PartyMode = 'auto'
 ): Promise<{ room: PartyRoomDto; inviteUrl: string }> {
   const host = await hostFor(who.principal);
   return hostLock(host.account_key, async (client) => {
@@ -178,8 +179,8 @@ export async function createRoom(
       const join = secret();
       const salt = generateSalt();
       const [room] = await rows<Room>(
-        `INSERT INTO party_rooms (id,owner,account_key,join_hash,encrypted_join,salt,device_id,expires_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,now()+interval '12 hours') RETURNING *`,
+        `INSERT INTO party_rooms (id,owner,account_key,join_hash,encrypted_join,salt,device_id,mode,expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '12 hours') RETURNING *`,
         [
           randomUUID(),
           who.principal,
@@ -188,6 +189,7 @@ export async function createRoom(
           encrypt(join, salt),
           salt,
           deviceId,
+          mode,
         ],
         tx
       );
@@ -434,15 +436,6 @@ export async function roomAction(
             'invalid_mode',
             'Choose approval or auto-add.'
           );
-        if (
-          options.mode === 'auto' &&
-          process.env.PARTY_AUTO_ENABLED !== 'true'
-        )
-          throw new PartyError(
-            403,
-            'auto_disabled',
-            'Auto-add is not enabled for this pilot.'
-          );
         await tx.query('UPDATE party_rooms SET mode=$2 WHERE id=$1', [
           id,
           options.mode,
@@ -551,10 +544,13 @@ export async function requestAction(
             'invalid_candidate',
             'Choose one of the proposed Spotify versions.'
           );
+        const status = fresh.mode === 'auto' ? 'approved' : 'matched';
         await tx.query(
-          "UPDATE party_requests SET selected=$2,status='matched' WHERE id=$1",
-          [requestId, candidate.metadata]
+          `UPDATE party_requests SET selected=$2,status=$3,
+          approved_order=CASE WHEN $3='approved' THEN nextval('party_approval_order') ELSE NULL END WHERE id=$1`,
+          [requestId, candidate.metadata, status]
         );
+        if (status === 'approved') await createJob(tx, roomId, requestId, 'deliver');
         return;
       }
       if (action === 'retry') {

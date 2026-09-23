@@ -53,10 +53,8 @@ test('interactive preview changes sample state without calling real APIs', async
     const host = new PartyDemoClient(true);
     const before = await host.request('/rooms/demo-room/requests');
     assert.equal(before.requests.length, 3);
-    await host.request('/rooms/demo-room/requests/demo-request-1/action', { action: 'approve' });
-    assert.equal((await host.request('/rooms/demo-room/requests')).requests[0].status, 'added');
-    await host.request('/rooms/demo-room/requests/demo-request-2/action', { action: 'select', candidateId: 'demo-night-drive' });
-    assert.equal((await host.request('/rooms/demo-room/requests')).requests[1].status, 'matched');
+    assert.equal(before.room.mode, 'auto');
+    assert.ok(before.requests.every(song => song.status === 'added'));
     await host.request('/rooms/demo-room/action', { action: 'lock' });
     await assert.rejects(host.request('/rooms/demo-room/requests', { url: 'https://open.spotify.com/track/demo' }));
     await assert.rejects(host.request('/auth/start', {}));
@@ -64,8 +62,10 @@ test('interactive preview changes sample state without calling real APIs', async
     const guest = new PartyDemoClient(false);
     assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 1);
     await assert.rejects(guest.request('/rooms/demo-room/action', { action: 'close' }));
-    await guest.request('/rooms/demo-room/requests', { displayName: 'You', url: 'https://open.spotify.com/track/demo' });
-    assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 2);
+    await guest.request('/rooms/demo-room/requests', { url: 'https://open.spotify.com/track/demo' });
+    const after = await guest.request('/rooms/demo-room/requests');
+    assert.equal(after.requests.length, 2);
+    assert.equal(after.requests[1].status, 'added');
   } finally {
     globalThis.fetch = original;
   }

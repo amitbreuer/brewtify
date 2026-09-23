@@ -7,13 +7,13 @@ function formatDuration(ms: number) {
 
 const statusText: Record<PartyRequestDto['status'], string> = {
   pending: 'Finding this song on Spotify…',
-  matched: 'Awaiting host approval',
+  matched: 'Confirm this recording before adding',
   needs_review: 'Host is choosing a version',
-  approved: 'Approved · waiting to add',
+  approved: 'Adding to Spotify…',
   added: "Added to host’s Spotify queue",
   unavailable: 'No available Spotify version found',
   rejected: 'Declined by host',
-  failed: 'Could not add this request',
+  failed: 'Could not add this song',
 };
 
 export type RequestAction = 'approve' | 'reject' | 'select' | 'retry';
@@ -34,9 +34,8 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
       <div className="party-track">
         {track?.artwork && <img src={track.artwork} alt="" loading="lazy" referrerPolicy="no-referrer" />}
         <div>
-          <h3>{track?.title ?? 'Song request'}</h3>
+          <h3>{track?.title ?? 'Finding your song…'}</h3>
           {track && <p>{track.artist} · {track.album}</p>}
-          <p className="party-muted">Requested by {request.displayName}</p>
           {request.source && request.selected && <p className="party-muted">Original: {request.source.title} — {request.source.artist}</p>}
           <a href={request.sourceUrl} target="_blank" rel="noopener noreferrer">Original on {sourceProvider}</a>
           {request.selected && <> · <a href={request.selected.url} target="_blank" rel="noopener noreferrer">Listen on Spotify</a></>}
@@ -44,7 +43,6 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
       </div>
       <p className={unknown ? 'party-warning' : 'party-status'}>{unknown ? 'Outcome unknown · this song may already be in the Spotify queue' : statusText[request.status]}</p>
       {request.failureCode && !unknown && <p className="party-muted">{partyFailureMessage(request.failureCode)}</p>}
-      {request.status === 'added' && <p className="party-muted">Spotify accepted the command. This does not mean the song has played.</p>}
       {isHost && actionable && (
         <>
           {reviewable && request.candidates.length > 0 && (
@@ -63,9 +61,9 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
             </details>
           )}
           <div className="party-actions">
-            {request.status === 'matched' && request.selected && <button disabled={busy} onClick={() => onAction(request.id, 'approve')}>Approve</button>}
-            {['pending', 'matched', 'needs_review', 'approved'].includes(request.status) && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'reject')}>Reject</button>}
-            {request.status === 'failed' && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'retry')}>{unknown ? 'Review duplicate risk & retry' : 'Retry request'}</button>}
+            {request.status === 'matched' && request.selected && <button disabled={busy} onClick={() => onAction(request.id, 'approve')}>Add this recording</button>}
+            {reviewable && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'reject')}>Skip song</button>}
+            {request.status === 'failed' && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'retry')}>{unknown ? 'Review duplicate risk & retry' : 'Retry song'}</button>}
           </div>
         </>
       )}

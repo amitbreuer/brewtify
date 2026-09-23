@@ -5,6 +5,15 @@ Playlists/Artists views. Party requests append to the host's Spotify playback
 queue, never to a playlist or Spotify Jam. A successful command means **accepted,
 not played**. Spotify and other controllers can affect eventual playback order.
 
+New parties automatically add exact/high-confidence matches. Guests paste a
+song link and submit without entering a display name; the API stores a generic
+`Guest` label, not a Telegram name. The room has no settings or approval panel.
+Hosts share the invitation and can end the party (which deletes its credentials).
+Uncertain recordings still require an explicit host version choice, which queues
+the chosen version without a second approval. Recovery controls appear only
+when playback needs attention. Existing approval-mode rooms retain their mode;
+the API still accepts that mode for older clients.
+
 ## Release gate
 
 `PARTY_ENABLED` defaults to false. Existing Library navigation and bot behavior
@@ -95,7 +104,8 @@ unsigned or wrong-service-account request fails even on the public Cloud Run
 service. Resume the Scheduler job only after that check; leave cleanup enabled
 even when Party intake is disabled. Set the repository `PARTY_ENABLED` variable
 to `true` only after the release gates pass, then deploy the approved revision.
-`PARTY_AUTO_ENABLED=true` is a separate opt-in after operational abuse checks.
+Auto-add is now the default; `PARTY_AUTO_ENABLED` is retired. Verify abuse
+controls as part of the `PARTY_ENABLED` release gate rather than a second opt-in.
 
 Cloud Tasks delivers `POST /internal/party/jobs`. Scheduler calls
 `POST /internal/party/maintenance`. Both verify Google ID tokens, exact audience,
@@ -208,18 +218,19 @@ actual allowlisted host. Record those results separately before enabling the pil
 With the visual fixture running at `http://127.0.0.1:5197` and Google Chrome
 installed, `npm run test:party-browser` verifies mobile layout, no Library fetch
 on Party entry, navigation during Library loading/failure, the disabled gate, and
-the host moderation/CSRF contract using explicitly stubbed browser fixtures.
+the slim sample flow and nameless submission/CSRF contract using explicitly
+stubbed browser fixtures.
 Override `PARTY_PREVIEW_URL` or `CHROME_PATH` for another local preview/browser.
 The full legacy frontend lint currently has 27 existing errors in untouched files;
 the focused `lint:party` gate covers changed frontend code without suppressing them.
 
-### Implementation verification (2026-09-22)
+### Implementation verification (2026-09-22, updated 2026-09-23)
 
 The isolated worktree passed all five workspace builds, 39 provider/transport
-tests, 15 catalog/Telegram tests, 15 native PostgreSQL/HTTP integration scenarios,
+tests, 15 catalog/Telegram tests, 16 native PostgreSQL/HTTP integration scenarios,
 17 frontend tests, five headless Chrome browser checks, targeted frontend lint,
 and Terraform initialization/validation without applying infrastructure.
-The PostgreSQL suite runs both migrations and verifies zero Prisma schema drift.
+The PostgreSQL suite runs all three migrations and verifies zero Prisma schema drift.
 Docker image execution was not available because the local Docker daemon was not
 running. No real provider authorization, Telegram client session, Cloud Tasks
 dispatch, production migration, or Spotify queue write was performed.

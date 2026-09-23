@@ -143,10 +143,12 @@ export default defineConfig([
 # Interactive Party demo
 
 With `VITE_PARTY_PREVIEW=true` on the Vite development server, open
-`/app/?section=party&demo=host` to review the actual host room and moderation
+`/app/?section=party&demo=host` to review the actual slim host room and song
 components with sample songs. The preview toolbar switches to Guest view and
-Host setup; approvals, version selection, submissions, lock/close and device
-selection update local sample state. Reset samples restores the example requests.
+Host setup. Guests only paste a song link and choose Add song; the demo shows
+it added immediately with no approval or display-name form. There is no room
+settings panel. End party and setup device selection update local sample state.
+Reset samples restores the example songs.
 
 This is a clearly labeled browser-only demo, not a Telegram session. It never
 calls Party APIs, authorizes a provider or queues music. QR links use

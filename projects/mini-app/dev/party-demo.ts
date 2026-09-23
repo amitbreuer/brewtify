@@ -20,8 +20,8 @@ const tracks: PartyCandidate[] = [
 function sampleRequests(): PartyRequestDto[] {
   const date = new Date().toISOString();
   return [
-    { id: 'demo-request-1', displayName: 'Maya', sourceUrl: tracks[0].url, selected: tracks[0], candidates: [tracks[0]], confidence: 'exact', status: 'matched', failureCode: null, createdAt: date, updatedAt: date },
-    { id: 'demo-request-2', displayName: 'Noam', sourceUrl: 'https://music.apple.com/us/song/demo/123456789', source: tracks[1], candidates: [tracks[1], tracks[2]], confidence: 'ambiguous', status: 'needs_review', failureCode: null, createdAt: date, updatedAt: date },
+    { id: 'demo-request-1', displayName: 'Guest', sourceUrl: tracks[0].url, selected: tracks[0], candidates: [], confidence: 'exact', status: 'added', failureCode: null, createdAt: date, updatedAt: date },
+    { id: 'demo-request-2', displayName: 'Guest', sourceUrl: 'https://music.apple.com/us/song/demo/123456789', source: tracks[1], selected: tracks[1], candidates: [], confidence: 'high', status: 'added', failureCode: null, createdAt: date, updatedAt: date },
     { id: 'demo-request-3', displayName: 'You', sourceUrl: tracks[3].url, selected: tracks[3], candidates: [], confidence: 'exact', status: 'added', failureCode: null, createdAt: date, updatedAt: date },
   ];
 }
@@ -35,7 +35,7 @@ export class PartyDemoClient extends PartyClient {
   constructor(isHost: boolean) {
     super();
     this.room = {
-      id: 'demo-room', status: 'open', mode: 'host_approval',
+      id: 'demo-room', status: 'open', mode: 'auto',
       expiresAt: new Date(Date.now() + 12 * 3600_000).toISOString(),
       deviceId: 'living-room', blockedReason: null, isHost,
     };
@@ -53,15 +53,15 @@ export class PartyDemoClient extends PartyClient {
     } else if (route === '/rooms/demo-room/requests' && body === undefined) {
       result = { room: this.room, requests: this.room.isHost ? this.requests : this.requests.filter(request => request.displayName === 'You'), nextCursor: String(this.revision) };
     } else if (route === '/rooms/demo-room/requests' && body !== undefined) {
-      if (this.room.status !== 'open') throw new PartyError('This demo party is not accepting requests.');
+      if (this.room.status !== 'open') throw new PartyError('This demo party is not accepting songs.');
       if (typeof input.url !== 'string' || !/^https:\/\/(open\.spotify\.com|music\.apple\.com)\//.test(input.url)) {
         throw new PartyError('Paste a Spotify or Apple Music song link. Demo mode never looks it up.');
       }
       const id = crypto.randomUUID();
       this.requests.push({
-        id, displayName: this.room.isHost && typeof input.displayName === 'string' ? input.displayName : 'You',
+        id, displayName: 'You',
         sourceUrl: input.url, selected: { ...tracks[0], title: 'Your sample song', artist: 'Demo catalog - not looked up' },
-        candidates: [], confidence: 'exact', status: 'matched', failureCode: null,
+        candidates: [], confidence: 'exact', status: 'added', failureCode: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
       result = { id };
@@ -82,7 +82,7 @@ export class PartyDemoClient extends PartyClient {
         const candidate = request.candidates.find(item => item.id === input.candidateId);
         if (!candidate) throw new PartyError('Choose one of the sample versions.');
         request.selected = candidate;
-        request.status = 'matched';
+        request.status = 'added';
       } else throw new PartyError('That action is unavailable in this local demo.');
       request.updatedAt = new Date(Math.max(Date.now(), Date.parse(request.updatedAt) + 1)).toISOString();
       result = { ok: true };

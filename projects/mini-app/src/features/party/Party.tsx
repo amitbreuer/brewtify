@@ -135,7 +135,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
 
   async function createRoom() {
     await run(async () => {
-      const result = await client.request<{ room: PartyRoomDto; inviteUrl: string }>('/rooms', { deviceId, mode: 'host_approval' });
+      const result = await client.request<{ room: PartyRoomDto; inviteUrl: string }>('/rooms', { deviceId });
       setSession((current) => current && { ...current, room: result.room });
       setView('room');
     });
@@ -184,7 +184,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
           {session.room && <button onClick={() => setView('room')}>Return to {session.room.isHost ? 'your party' : 'joined party'}</button>}
           <section className="party-card party-stack">
             <h2>Bring everyone’s songs together</h2>
-            <p>Guests share Spotify or Apple Music song links. The host approves Spotify versions to add to their playback queue.</p>
+            <p>Friends join, paste Spotify or Apple Music song links, and add songs straight to your Spotify queue.</p>
             <p className="party-muted">Private pilot · Spotify hosts must be allowlisted. Party needs separate playback permission, not your Library login. Rooms expire after 12 hours.</p>
             <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium and will host playback.</label>
             <button disabled={busy || !premium || authStatus === 'pending'} onClick={() => void start()}>Start party</button>
@@ -213,7 +213,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
             <>
               <p>Spotify playback is connected for Party only.</p>
               <DevicePicker devices={devices} value={deviceId} onChange={setDeviceId} onRefresh={() => void run(() => loadDevices())} busy={busy} />
-              <p className="party-muted">Start with host approval. No test song will be added. Choose only the device where you intend to listen.</p>
+              <p className="party-muted">Songs will be added automatically. No test song will be added. Choose only the device where you intend to listen.</p>
               <button disabled={busy || !devices.some((device) => device.id === deviceId && device.isActive && !device.isRestricted)} onClick={() => void createRoom()}>Create party on this device</button>
               <button className="party-secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect Party Spotify</button>
             </>
@@ -227,13 +227,12 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
         </section>
       )}
       {session?.room && view === 'room' && (
-        <Room key={session.room.id} client={client} initialRoom={session.room} autoEnabled={config.autoEnabled}
+        <Room key={session.room.id} client={client} initialRoom={session.room}
           onRoomChange={(room) => setSession((current) => current && { ...current, room, hostConnected: room.isHost && ['closed', 'expired'].includes(room.status) ? false : current.hostConnected })}
-          onDisconnect={() => void disconnect()}
           onReconnect={() => { setAuthStatus('idle'); setView('setup'); setSession((current) => current && { ...current, hostConnected: false }); }}
         />
       )}
-      <footer className="party-muted">Not Spotify Jam. Brewtify adds approved songs to Spotify’s queue, not a playlist, and does not play audio. Leaving this tab does not close a party.</footer>
+      <footer className="party-muted">Songs go to Spotify’s queue, not a playlist. Leaving this tab does not end the party.</footer>
     </main>
   );
 }

@@ -308,7 +308,7 @@ test('signed sessions reject raw IDs, origin forgery, tampering and launch repla
         'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL'
       )
     ).length,
-    2
+    3
   );
 });
 test('OAuth browser state mismatch, cancellation, expiration and one-use tickets', async () => {
@@ -725,17 +725,7 @@ test('OIDC audience and verified configured identity are mandatory', async () =>
     verify.mock.restore();
   }
 });
-test('auto mode requires opt-in and recording drift requires fresh manual approval', async () => {
-  assert.equal(
-    (
-      await call(`/rooms/${room.id}/action`, host, {
-        action: 'mode',
-        mode: 'auto',
-      })
-    ).data.error.code,
-    'auto_disabled'
-  );
-  process.env.PARTY_AUTO_ENABLED = 'true';
+test('auto mode still requires fresh recording confirmation after metadata drift', async () => {
   await store.rows(
     "UPDATE party_delivery_attempts SET created_at=now()-interval '3 minutes' WHERE outcome='unknown'"
   );
@@ -795,7 +785,6 @@ test('auto mode requires opt-in and recording drift requires fresh manual approv
       action: 'mode',
       mode: 'host_approval',
     });
-    process.env.PARTY_AUTO_ENABLED = 'false';
   }
 });
 test('close races do not interrupt or repeat an already in-flight command', async () => {
@@ -895,4 +884,44 @@ test('closing deletes credentials, cancels outbox and expiry cascades retained h
     autoEnabled: false,
   });
   assert.equal((await call('/session', host)).response.status, 404);
+});
+
+test('new parties auto-add unnamed guest submissions and selected versions without approval', async () => {
+  process.env.PARTY_ENABLED = 'true';
+  SpotifyClient.prototype.enqueue.mock.mockImplementation(async () => { queueCalls++; });
+  await authorize(host);
+  const created = await call('/rooms', host, { deviceId: 'speaker' });
+  assert.equal(created.response.status, 201, JSON.stringify(created.data));
+  const active = created.data.room;
+  assert.equal(active.mode, 'auto');
+  assert.equal((await call('/config')).data.autoEnabled, true);
+  const secret = new URL(created.data.inviteUrl).searchParams.get('startapp').slice(2);
+  await call('/join', member, { secret });
+  const body = { url: `https://open.spotify.com/track/${trackId}`, submissionKey: randomUUID() };
+  const first = await call(`/rooms/${active.id}/requests`, member, body);
+  assert.equal(first.response.status, 202, JSON.stringify(first.data));
+  assert.equal((await call(`/rooms/${active.id}/requests`, member, body)).data.id, first.data.id);
+  const before = queueCalls;
+  await runPending(first.data.id, 'resolve');
+  const [resolved] = await store.rows('SELECT * FROM party_requests WHERE id=$1', [first.data.id]);
+  assert.equal(resolved.display_name, 'Guest');
+  assert.equal(resolved.status, 'approved');
+  await runPending(first.data.id, 'deliver');
+  await runPending(first.data.id, 'deliver');
+  assert.equal(queueCalls, before + 1);
+  const receipt = (await call(`/rooms/${active.id}/requests`, member)).data.requests[0];
+  assert.equal(receipt.status, 'added');
+
+  // Seed an ambiguous resolver result to exercise the version-choice transition.
+  const second = await call(`/rooms/${active.id}/requests`, member, { ...body, submissionKey: randomUUID() });
+  await store.rows("UPDATE party_requests SET status='needs_review',confidence='ambiguous' WHERE id=$1", [second.data.id]);
+  await store.rows('INSERT INTO party_match_candidates(request_id,track_id,metadata) VALUES($1,$2,$3)', [second.data.id, trackId, resolved.selected]);
+  assert.equal((await call(`/rooms/${active.id}/requests/${second.data.id}/action`, member, { action: 'select', candidateId: trackId })).response.status, 403);
+  assert.equal((await call(`/rooms/${active.id}/requests/${second.data.id}/action`, host, { action: 'select', candidateId: 'invalid' })).response.status, 400);
+  assert.equal(queueCalls, before + 1, 'ambiguous songs must not silently enqueue');
+  const selected = await call(`/rooms/${active.id}/requests/${second.data.id}/action`, host, { action: 'select', candidateId: trackId });
+  assert.equal(selected.response.status, 200, JSON.stringify(selected.data));
+  await runPending(second.data.id, 'deliver');
+  assert.equal(queueCalls, before + 2, 'choosing a version does not require a second approval');
+  await call(`/rooms/${active.id}/action`, host, { action: 'close' });
 });

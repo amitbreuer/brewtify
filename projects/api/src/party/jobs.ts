@@ -222,7 +222,6 @@ async function resolve(
     const auto =
       request.failure_code !== 'recording_changed' &&
       room.mode === 'auto' &&
-      process.env.PARTY_AUTO_ENABLED === 'true' &&
       (match.confidence === 'exact' || match.confidence === 'high') &&
       !!match.selected;
     const status =

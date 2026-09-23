@@ -9,12 +9,10 @@ import type { RequestAction } from './RequestCard';
 import { usePolling } from './usePolling';
 import { partyFailureMessage } from './messages';
 
-export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconnect, onReconnect }: {
+export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
   client: PartyClient;
   initialRoom: PartyRoomDto;
-  autoEnabled: boolean;
   onRoomChange: (room: PartyRoomDto) => void;
-  onDisconnect: () => void;
   onReconnect: () => void;
 }) {
   const [room, setRoom] = useState(initialRoom);
@@ -24,7 +22,6 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
   const [pollError, setPollError] = useState('');
   const [terminalStatus, setTerminalStatus] = useState<'closed' | 'expired' | null>(null);
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [receipt, setReceipt] = useState('');
   const [inviteUrl, setInviteUrl] = useState('');
@@ -87,7 +84,7 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
   }
 
   function closeRoom() {
-    if (window.confirm('Close this party? New requests and unsent additions stop, and Party Spotify credentials are deleted. Tracks already queued remain in Spotify. An in-flight addition cannot be recalled.')) void roomAction('close');
+    if (window.confirm('End this party? New songs and unsent additions stop, and Party Spotify disconnects. Already queued songs remain in Spotify. An in-flight addition cannot be recalled.')) void roomAction('close');
   }
 
   async function requestAction(id: string, action: RequestAction, candidateId?: string) {
@@ -102,7 +99,7 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
   }
 
   async function submit() {
-    const data = { displayName: name.trim(), url: url.trim() };
+    const data = { url: url.trim() };
     const signature = JSON.stringify(data);
     if (!submission.current || submission.current.signature !== signature) submission.current = { signature, key: crypto.randomUUID() };
     const submissionKey = submission.current.key;
@@ -110,7 +107,7 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
       await client.request(`${path}/requests`, { ...data, submissionKey });
       setUrl('');
       submission.current = null;
-      setReceipt('Request received. Watch its status below; it is not added until approved and accepted by Spotify.');
+      setReceipt('Song submitted. Watch below while we find it and add it to Spotify.');
       await readFeed();
     });
   }
@@ -136,30 +133,20 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
     <div className="party-stack">
       <section className="party-card party-stack">
         <div className="party-heading"><h2>{room.isHost ? 'Your party' : 'You’re invited'}</h2><span className="party-badge">{status}</span></div>
-        <p className="party-muted">Expires {new Date(room.expiresAt).toLocaleString()} · {room.mode === 'auto' ? 'Safe matches auto-add' : 'Host approval'}</p>
-        {inactive && <p role="status">This party has {status === 'expired' ? 'expired' : 'closed'}. No more songs can be requested or added. Already queued songs remain in Spotify.</p>}
-        {room.status === 'locked' && <p role="status">New requests are paused. The host can still moderate existing requests.</p>}
+        {!inactive && <p className="party-muted">{room.mode === 'auto' ? 'Paste a link. Songs are added automatically.' : 'This older party needs the host to confirm songs.'}</p>}
+        {inactive && <p role="status">This party has {status === 'expired' ? 'expired' : 'closed'}. No more songs can be added. Already queued songs remain in Spotify.</p>}
+        {room.status === 'locked' && <p role="status">New songs are paused.</p>}
         {room.blockedReason && <div className="party-warning" role="status">{partyFailureMessage(room.blockedReason)}</div>}
         {room.isHost && !inactive && (
           <>
             <div className="party-actions">
-              <button disabled={busy} className="party-secondary" onClick={() => void roomAction(room.status === 'locked' ? 'unlock' : 'lock')}>{room.status === 'locked' ? 'Unlock requests' : 'Lock requests'}</button>
-              <button disabled={busy} className="party-secondary" onClick={() => void loadDevices()}>Confirm playback device</button>
-              <button disabled={busy} className="party-secondary" onClick={onReconnect}>Reconnect Party Spotify</button>
-              <button disabled={busy} className="party-danger" onClick={closeRoom}>Close party</button>
-              <button disabled={busy} className="party-secondary" onClick={onDisconnect}>Disconnect Party Spotify</button>
+              {room.status === 'locked' && <button disabled={busy} className="party-secondary" onClick={() => void roomAction('unlock')}>Resume songs</button>}
+              {room.blockedReason && room.blockedReason !== 'delivery_unknown' && <>
+                <button disabled={busy} className="party-secondary" onClick={() => void loadDevices()}>Confirm playback device</button>
+                <button disabled={busy} className="party-secondary" onClick={onReconnect}>Reconnect Spotify</button>
+              </>}
+              <button disabled={busy} className="party-danger" onClick={closeRoom}>End party</button>
             </div>
-            {(autoEnabled || room.mode === 'auto') && (
-              <label className="party-stack">Moderation mode
-                <select value={room.mode} disabled={busy} onChange={(event) => {
-                  if (event.target.value === 'auto' && !window.confirm('Automatically add uniquely safe Spotify matches? Ambiguous versions will still require your selection.')) return;
-                  void roomAction('mode', { mode: event.target.value });
-                }}>
-                  <option value="host_approval">Host approval (recommended)</option>
-                  <option value="auto" disabled={!autoEnabled}>Auto-add safe matches</option>
-                </select>
-              </label>
-            )}
             {room.blockedReason === 'delivery_unknown' && <button disabled={busy} className="party-secondary" onClick={() => {
               if (window.confirm('A previous command may already have added its song. Acknowledge the uncertainty to resume other requests? This does not retry the unknown request.')) void roomAction('acknowledge_unknown');
             }}>Acknowledge unknown outcome & resume</button>}
@@ -175,7 +162,7 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
       {error && <div className="party-error" role="alert">{error}</div>}
       {room.isHost && !inactive && (
         <section className="party-card party-stack">
-          <h2>Invite guests in Telegram</h2>
+          <h2>Invite friends</h2>
           {qr && <img className="party-qr" src={qr} alt="QR code opening this party invitation in Telegram" />}
           {inviteUrl ? (
             <>
@@ -184,30 +171,28 @@ export function Room({ client, initialRoom, autoEnabled, onRoomChange, onDisconn
               <button className="party-secondary" onClick={() => void copyInvite()}>{copied ? 'Copied!' : 'Copy Telegram invitation'}</button>
             </>
           ) : <p>Invitation unavailable. Reopen the room to retry.</p>}
-          <p className="party-muted">Share privately. Guests only see their own request receipts.</p>
         </section>
       )}
       {!inactive && (
         <form className="party-card party-stack" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          <h2>Request a song</h2>
-          <label htmlFor="party-name">Display name</label>
-          <input id="party-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={40} autoComplete="off" placeholder="How should the host know you?" disabled={room.status !== 'open' || busy} />
+          <h2>Add a song</h2>
           <label htmlFor="party-song">Spotify or Apple Music song link</label>
           <input id="party-song" value={url} onChange={(event) => { setUrl(event.target.value); setReceipt(''); }} required maxLength={2048} autoComplete="off" placeholder="https://open.spotify.com/track/…" disabled={room.status !== 'open' || busy} />
-          <p className="party-muted">Individual songs only, not albums, playlists or shortened links. Apple Music versions may need the host to choose a Spotify match.</p>
-          <button disabled={busy || room.status !== 'open' || !name.trim() || !url.trim()}>Submit request</button>
+          <p className="party-muted">Song links only. No music account needed.</p>
+          <button disabled={busy || room.status !== 'open' || !url.trim()}>Add song</button>
           {receipt && <p role="status">{receipt}</p>}
         </form>
       )}
-      <section className="party-stack" aria-label={room.isHost ? 'Moderation requests' : 'Your request receipts'}>
-        <h2>{room.isHost ? 'Requests & moderation' : 'Your requests'}</h2>
+      <section className="party-stack" aria-label={room.isHost ? 'Party songs' : 'Your songs'}>
+        <h2>{room.isHost ? 'Party songs' : 'Your songs'}</h2>
         {pollError && <div className="party-error" role="alert">{pollError}</div>}
-        {!loaded && !pollError && <p role="status">Loading requests…</p>}
-        {loaded && !requests.length && <p className="party-muted">No requests yet.</p>}
+        {!loaded && !pollError && <p role="status">Loading songs…</p>}
+        {loaded && !requests.length && <p className="party-muted">No songs yet. Add the first one.</p>}
         {requests.map((request) => (
           <RequestCard key={request.id} request={request} isHost={room.isHost} actionable={!inactive} busy={busy} onAction={(id, action, candidate) => void requestAction(id, action, candidate)} />
         ))}
       </section>
+      <p className="party-muted">Added means Spotify accepted the song, not that it has played. Uncertain versions need the host to choose a match.</p>
     </div>
   );
 }
