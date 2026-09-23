@@ -1,5 +1,79 @@
 # React + TypeScript + Vite
 
+## Brewtify Library and Party
+
+The existing Mini App is still served at `/app`. `GET /api/party/config` controls
+the Party rollout. When disabled (or unavailable), the original Library UI and
+Playlists/Artists navigation remain. When enabled, Library and Party are lazy
+feature boundaries: visiting Party never mounts Library or fetches its profile.
+Library logout and Party disconnect are separate.
+An error boundary around lazy Library content also catches import/render
+failures without removing the section navigation. Vite explicitly prebundles
+the linked CommonJS `@brewtify/shared` workspace for development-browser imports.
+
+Party supports `?section=party`, Telegram `startapp=party`, and private
+`startapp=p_<secret>` invitations. Browser visitors are directed to Telegram.
+There is no development identity bypass: Party bootstraps with signed
+`Telegram.WebApp.initData`, uses same-origin session cookies, and sends
+`X-Party-CSRF` on mutations. Provider credentials never enter the Mini App.
+
+Start party starts Spotify consent when needed, after Premium confirmation.
+OAuth opens via Telegram `openLink`; the original Mini App polls its own
+authorization transaction rather than assuming the external browser shares
+cookies. After consent, the room opens automatically; there is no device picker
+or separate create step. Reopening resumes unfinished creation or the existing
+room. Room creation is idempotent for the same verified host; failures have an
+explicit Start party retry rather than a background mutation-retry loop.
+Queue commands omit `device_id` and follow the host's active Spotify playback.
+An explicit no-active-playback rejection shows a host-only Try again action
+after starting music in Spotify. Unknown delivery outcomes require
+explicit duplicate-risk confirmation before a retry.
+
+Feeds poll while visible, merge changed receipts by ID using the returned
+cursor, honor `Retry-After`, back off on transient failures, and stop after
+closure/expiry or a terminal authorization/membership error. QR invitations
+are generated locally with `qrcode`, not through a third-party service.
+Guest receipt visibility and all host permissions are enforced by the API.
+
+Validation:
+
+```sh
+npm test --workspace=mini-app
+npm run lint:party --workspace=mini-app
+npm run lint --workspace=mini-app
+npm run build --workspace=mini-app
+```
+
+Node's built-in tests cover launch/navigation rules, invitation parsing, lazy
+Library boundary regressions, changed-feed merging, backoff, signed bootstrap,
+cookie/CSRF requests, and non-replayed writes. Real Telegram WebView cookies,
+external OAuth return, active-playback targeting, and actual Spotify delivery still
+require an authorized integration pilot.
+
+On re-entry, Party first restores `GET /api/party/session`; only a 401 triggers
+signed-launch bootstrap. Sessions last one hour, while new signed launches
+must be fresh within five minutes. After session expiry, reopen Telegram for
+fresh launch data. Feed cursors are opaque revision strings: an unchanged
+cursor on an empty page waits for the normal interval, not immediate polling.
+
+### Credential-free navigation preview
+
+```sh
+VITE_PARTY_PREVIEW=true npm run dev --workspace=mini-app -- --host 127.0.0.1 --port 5174
+```
+
+Open `http://127.0.0.1:5174/app/?section=party` for the Open-in-Telegram
+explanation, or `http://127.0.0.1:5174/app/?section=library` for the Library
+boundary (an error is expected without its API). Both main tabs remain usable.
+The Vite **development-server-only** fixture responds solely to
+`GET /api/party/config`. It never creates a session, simulates identity,
+intercepts provider authorization, or handles mutations. It is absent from
+production builds and `vite preview`, even if the environment flag is set.
+Do not treat this visual fixture as a Telegram authentication or host-flow test.
+
+`lint:party` covers all changed frontend source/config files; full `lint` also
+reports the repository’s unrelated legacy findings.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
@@ -71,3 +145,28 @@ export default defineConfig([
   },
 ])
 ```
+# Interactive Party demo
+
+With `VITE_PARTY_PREVIEW=true` on the Vite development server, open
+`/app/?section=party&demo=host` to review the actual slim host room and song
+components with sample songs. The preview toolbar switches to Guest view and
+Start screen (`demo=start`; old `demo=setup` links also open this screen).
+The sample Start party button opens the host room directly, simulating consent
+without a device picker. Guests only paste a song link and choose Add song; the demo shows
+it added immediately with no approval or display-name form. There is no room
+settings panel. Start party and End party update local sample state.
+Reset samples restores the example songs.
+
+The host room uses an accessible end-party icon. Both host and guest rooms omit
+the Party title and welcome card, and use the same compact song rows containing
+artwork, title, artist and album, without success labels, provider links or
+descriptive copy. Pending, failed and ambiguous songs retain the information and
+controls needed to avoid silent failures or selecting the wrong recording.
+Guests still see only their own songs and never receive host controls.
+
+This is a clearly labeled browser-only demo, not a Telegram session. It never
+calls Party APIs, authorizes a provider or queues music. QR links use
+`example.invalid` and are not invitations. Both the development flag and `demo`
+query parameter are required; the demo is excluded from production builds even
+if the preview flag is set during a build. The normal preview without `demo`
+still shows the real Open in Telegram boundary.

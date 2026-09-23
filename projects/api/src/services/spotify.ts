@@ -3,6 +3,7 @@ import { SpotifyTokens, UserProfile, Playlist, Artist, Track, Album } from '../t
 import { redisCacheService, TTL } from './redis-cache';
 import { createLogger } from '../utils/logger';
 import PQueue from 'p-queue';
+import { buildSpotifyAuthorizationUrl } from '@brewtify/spotify';
 
 const log = createLogger('spotify-service');
 
@@ -38,17 +39,14 @@ export class SpotifyService {
       'playlist-modify-public',
       'user-follow-read',
       'user-follow-modify',
-    ].join(' ');
+    ];
 
-    const params = new URLSearchParams({
-      client_id: this.clientId,
-      response_type: 'code',
-      redirect_uri: this.redirectUri,
-      scope: scopes,
+    return buildSpotifyAuthorizationUrl({
+      clientId: this.clientId,
+      redirectUri: this.redirectUri,
+      scopes,
       state,
     });
-
-    return `${SPOTIFY_ACCOUNTS_BASE}/authorize?${params}`;
   }
 
   async exchangeCode(code: string): Promise<SpotifyTokens> {

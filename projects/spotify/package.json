@@ -1,0 +1,21 @@
+{
+  "name": "@brewtify/spotify",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "@brewtify/shared": "*",
+    "undici": "^7.16.0"
+  }
+}

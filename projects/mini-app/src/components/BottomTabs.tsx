@@ -5,14 +5,16 @@ type Tab = 'playlists' | 'artists';
 interface BottomTabsProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
+  inline?: boolean;
 }
 
-export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
+export function BottomTabs({ activeTab, onTabChange, inline = false }: BottomTabsProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-[#181818] border-t border-[#282828] z-20">
+    <nav aria-label="Library" className={`${inline ? '' : 'fixed bottom-0 left-0 right-0 z-20'} bg-[#181818] border-t border-[#282828]`}>
       <div className="flex">
         <button
           onClick={() => onTabChange('playlists')}
+          aria-current={activeTab === 'playlists' ? 'page' : undefined}
           className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors ${
             activeTab === 'playlists' ? 'text-white' : 'text-[#B3B3B3]'
           }`}
@@ -22,6 +24,7 @@ export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
         </button>
         <button
           onClick={() => onTabChange('artists')}
+          aria-current={activeTab === 'artists' ? 'page' : undefined}
           className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors ${
             activeTab === 'artists' ? 'text-white' : 'text-[#B3B3B3]'
           }`}

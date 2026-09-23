@@ -7,18 +7,23 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test dist/party/*.test.js",
+    "test:integration": "node --test tests/party.integration.test.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",
+    "embedded-postgres": "18.4.0-beta.17",
     "prisma": "^7.8.0"
   },
   "dependencies": {
     "@brewtify/shared": "*",
+    "@brewtify/spotify": "*",
     "@brewtify/tap": "*",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@upstash/redis": "^1.38.0",
+    "@google-cloud/tasks": "^6.2.1",
+    "google-auth-library": "^10.3.0",
     "p-queue": "^9.3.0",
     "pg": "^8.21.0"
   }

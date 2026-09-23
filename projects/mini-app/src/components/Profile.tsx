@@ -5,9 +5,10 @@ import { logout } from '../lib/api';
 interface ProfileProps {
   profile: UserProfile | null;
   onLogout: () => void;
+  libraryLabel?: boolean;
 }
 
-export function Profile({ profile, onLogout }: ProfileProps) {
+export function Profile({ profile, onLogout, libraryLabel = false }: ProfileProps) {
   const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -42,7 +43,7 @@ export function Profile({ profile, onLogout }: ProfileProps) {
         disabled={loggingOut}
         className="text-xs text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
       >
-        {loggingOut ? 'Logging out...' : 'Log Out'}
+        {loggingOut ? 'Logging out...' : libraryLabel ? 'Log out of Library' : 'Log Out'}
       </button>
     </div>
   );
