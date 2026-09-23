@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PartyConfigDto, PartyDevice, PartyRoomDto, PartySessionDto } from '@brewtify/shared';
+import type { PartyConfigDto, PartyRoomDto, PartySessionDto } from '@brewtify/shared';
 import { inviteSecret } from '../../lib/navigation';
 import { telegram, useTelegramBack } from '../../lib/telegram';
 import { PartyClient, errorText } from './api';
-import { DevicePicker } from './DevicePicker';
 import { Room } from './Room';
 import { usePolling } from './usePolling';
 
@@ -16,20 +15,23 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
 }) {
   const [client] = useState(() => new PartyClient());
   const [session, setSession] = useState<PartySessionDto | null>(null);
-  const [view, setView] = useState<'loading' | 'landing' | 'setup' | 'room'>('loading');
+  const [view, setView] = useState<'loading' | 'landing' | 'connecting' | 'room'>('loading');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [premium, setPremium] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus['status']>('idle');
-  const [devices, setDevices] = useState<PartyDevice[]>([]);
-  const [deviceId, setDeviceId] = useState('');
   const [joinInput, setJoinInput] = useState(initialSecret ? `p_${initialSecret}` : '');
   const [bootKey, setBootKey] = useState(0);
   const initData = telegram()?.initData ?? '';
 
-  const loadDevices = useCallback(async (signal?: AbortSignal) => {
-    const result = await client.request<{ devices: PartyDevice[] }>('/devices', undefined, signal);
-    setDevices(result.devices);
+  const openHostRoom = useCallback(async (current: PartySessionDto, signal?: AbortSignal) => {
+    const existing = current.room?.isHost && ['open', 'locked'].includes(current.room.status) ? current.room : null;
+    const room = existing ?? (await client.request<{ room: PartyRoomDto }>('/rooms', {}, signal)).room;
+    signal?.throwIfAborted();
+    setSession({ ...current, room });
+    setAuthStatus('idle');
+    setView('room');
+    setError('');
   }, [client]);
 
   useEffect(() => {
@@ -49,14 +51,18 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
             setError(errorText(failure));
             setView('landing');
           }
-        } else {
-          setView(current.room ? 'room' : current.hostConnected ? 'setup' : 'landing');
+          return;
         }
         const auth = await client.request<AuthStatus>('/auth/status', undefined, controller.signal);
-        setAuthStatus(auth.status);
-        if (auth.status === 'pending') setView('setup');
-        if (auth.status === 'failed' && !current.hostConnected) setError(auth.error?.replaceAll('_', ' ') || 'Spotify authorization was not completed. You can start again.');
-        if (!current.room && current.hostConnected && auth.status !== 'pending') await loadDevices(controller.signal);
+        if (auth.status === 'pending') {
+          setAuthStatus('pending');
+          setView('connecting');
+        } else if (current.hostConnected && (!current.room || auth.status === 'complete')) {
+          await openHostRoom(current, controller.signal);
+        } else {
+          setView(current.room ? 'room' : 'landing');
+          if (auth.status === 'failed' && !current.hostConnected) setError(auth.error?.replaceAll('_', ' ') || 'Spotify authorization was not completed. You can start again.');
+        }
       } catch (failure) {
         if (!controller.signal.aborted) {
           setError(errorText(failure));
@@ -68,47 +74,49 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
     return () => controller.abort();
   // Consume invitations after joining without restarting bootstrap with the new prop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, initData, bootKey, loadDevices]);
+  }, [client, initData, bootKey, openHostRoom]);
 
   const pollAuth = useCallback(async (signal: AbortSignal) => {
     const auth = await client.request<AuthStatus>('/auth/status', undefined, signal);
     if (auth.status === 'complete') {
-      const current = await client.session(undefined, signal);
-      setSession(current);
-      await loadDevices(signal);
-      setAuthStatus('complete');
-      setView(current.room?.isHost && ['open', 'locked'].includes(current.room.status) ? 'room' : 'setup');
-      setError('');
+      try {
+        const current = await client.session(undefined, signal);
+        setSession(current);
+        await openHostRoom(current, signal);
+      } catch (failure) {
+        if (!signal.aborted) {
+          setAuthStatus('idle');
+          setView('landing');
+          setError(errorText(failure));
+        }
+      }
       return { stop: true };
     }
     if (auth.status === 'failed' || auth.status === 'idle') {
       setAuthStatus(auth.status);
+      setView('landing');
       setError(auth.error?.replaceAll('_', ' ') || 'Authorization was cancelled or expired. Start again to reconnect.');
       return { stop: true };
     }
-  }, [client, loadDevices]);
+  }, [client, openHostRoom]);
   const onPollError = useCallback((failure: unknown) => setError(errorText(failure)), []);
-  usePolling(authStatus === 'pending' || (authStatus === 'complete' && !session?.hostConnected), pollAuth, onPollError);
+  usePolling(authStatus === 'pending', pollAuth, onPollError);
 
   const back = useCallback(() => setView('landing'), []);
-  useTelegramBack(view === 'setup' || view === 'room', back);
+  useTelegramBack(view === 'connecting' || view === 'room', back);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError('');
-    try { await action(); } catch (failure) { setError(errorText(failure)); } finally { setBusy(false); }
+    try { await action(); } catch (failure) { setError(errorText(failure)); setView('landing'); } finally { setBusy(false); }
   }
 
   async function start(forceAuthorization = false) {
-    if (!premium) return;
+    if (!session || (!premium && !session.hostConnected && !forceAuthorization)) return;
     await run(async () => {
-      setView('setup');
+      setView('connecting');
       if (session?.hostConnected && !forceAuthorization) {
-        if (session.room?.isHost && ['open', 'locked'].includes(session.room.status)) {
-          setView('room');
-          return;
-        }
-        await loadDevices();
+        await openHostRoom(session);
         return;
       }
       const auth = await client.request<{ authorizationUrl: string }>('/auth/start', { premiumConfirmed: true });
@@ -133,26 +141,6 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
     });
   }
 
-  async function createRoom() {
-    await run(async () => {
-      const result = await client.request<{ room: PartyRoomDto; inviteUrl: string }>('/rooms', { deviceId });
-      setSession((current) => current && { ...current, room: result.room });
-      setView('room');
-    });
-  }
-
-  const disconnect = async () => {
-    if (!window.confirm('Disconnect Party Spotify? This closes your party and deletes its playback credentials. Queued tracks remain; an in-flight addition cannot be recalled. Library stays connected.')) return;
-    await run(async () => {
-      await client.request('/disconnect', {});
-      setSession(await client.session());
-      setAuthStatus('idle');
-      setView('landing');
-      setDevices([]);
-      setDeviceId('');
-    });
-  };
-
   if (!initData) {
     let telegramUrl = config.telegramUrl;
     if (telegramUrl && initialSecret) {
@@ -174,7 +162,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
 
   return (
     <main className="party-page party-stack">
-      {view === 'setup' && <header className="party-heading"><button className="party-secondary" onClick={back}>Back</button></header>}
+      {view === 'connecting' && <header className="party-heading"><button className="party-secondary" onClick={back}>Back</button></header>}
       {error && <div className="party-error" role="alert">{error}</div>}
       {view === 'loading' && <p role="status">Verifying your Telegram session…</p>}
       {view !== 'loading' && !session && <button disabled={busy} onClick={() => { setError(''); setView('loading'); setBootKey((key) => key + 1); }}>Retry Telegram session</button>}
@@ -185,9 +173,9 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
             <h2>Bring everyone’s songs together</h2>
             <p>Friends join, paste Spotify or Apple Music song links, and add songs straight to your Spotify queue.</p>
             <p className="party-muted">Private pilot · Spotify hosts must be allowlisted. Party needs separate playback permission, not your Library login. Rooms expire after 12 hours.</p>
-            <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium and will host playback.</label>
-            <button disabled={busy || !premium || authStatus === 'pending'} onClick={() => void start()}>Start party</button>
-            {authStatus === 'pending' && <button className="party-secondary" onClick={() => setView('setup')}>Authorization in progress</button>}
+            {!session.hostConnected && <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium and will host playback.</label>}
+            <button disabled={busy || (!premium && !session.hostConnected) || authStatus === 'pending'} onClick={() => void start()}>Start party</button>
+            {authStatus === 'pending' && <button className="party-secondary" onClick={() => setView('connecting')}>Authorization in progress</button>}
           </section>
           <form className="party-card party-stack" onSubmit={(event) => { event.preventDefault(); void join(); }}>
             <h2>Join a party</h2>
@@ -198,37 +186,21 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
           </form>
         </>
       )}
-      {session && view === 'setup' && (
+      {session && view === 'connecting' && (
         <section className="party-card party-stack">
-          <h2>Host setup</h2>
+          <h2>Connecting Spotify</h2>
           {authStatus === 'pending' ? (
             <>
               <p role="status">Complete Spotify authorization in the browser, then return here. We’ll check for completion while this app is visible.</p>
-              <p className="party-muted">Your browser and Telegram do not need to share cookies. Reopening Party in Telegram resumes this setup.</p>
-              <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium.</label>
-              <button className="party-secondary" disabled={busy || !premium} onClick={() => void start(true)}>Start authorization again</button>
+              <button className="party-secondary" disabled={busy} onClick={() => void start(true)}>Start authorization again</button>
             </>
-          ) : session.hostConnected ? (
-            <>
-              <p>Spotify playback is connected for Party only.</p>
-              <DevicePicker devices={devices} value={deviceId} onChange={setDeviceId} onRefresh={() => void run(() => loadDevices())} busy={busy} />
-              <p className="party-muted">Songs will be added automatically. No test song will be added. Choose only the device where you intend to listen.</p>
-              <button disabled={busy || !devices.some((device) => device.id === deviceId && device.isActive && !device.isRestricted)} onClick={() => void createRoom()}>Create party on this device</button>
-              <button className="party-secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect Party Spotify</button>
-            </>
-          ) : (
-            <>
-              <p>Allowlisted Spotify Premium hosts can connect playback. Library authorization remains separate.</p>
-              <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium.</label>
-              <button disabled={busy || !premium} onClick={() => void start()}>Connect Spotify for Party</button>
-            </>
-          )}
+          ) : <p role="status">Opening your party…</p>}
         </section>
       )}
       {session?.room && view === 'room' && (
         <Room key={session.room.id} client={client} initialRoom={session.room}
           onRoomChange={(room) => setSession((current) => current && { ...current, room, hostConnected: room.isHost && ['closed', 'expired'].includes(room.status) ? false : current.hostConnected })}
-          onReconnect={() => { setAuthStatus('idle'); setView('setup'); setSession((current) => current && { ...current, hostConnected: false }); }}
+          onReconnect={() => void start(true)}
         />
       )}
       {view !== 'room' && <footer className="party-muted">Songs go to Spotify’s queue, not a playlist. Leaving this tab does not end the party.</footer>}

@@ -60,7 +60,7 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
           <div className="party-actions">
             {request.status === 'matched' && request.selected && <button disabled={busy} onClick={() => onAction(request.id, 'approve')}>Add this recording</button>}
             {reviewable && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'reject')}>Skip song</button>}
-            {request.status === 'failed' && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'retry')}>{unknown ? 'Review duplicate risk & retry' : 'Retry song'}</button>}
+            {request.status === 'failed' && request.failureCode !== 'device_unavailable' && <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'retry')}>{unknown ? 'Review duplicate risk & retry' : 'Retry song'}</button>}
           </div>
         </>
       )}

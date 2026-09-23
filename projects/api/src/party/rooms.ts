@@ -12,7 +12,7 @@ import type {
   PartyTrack,
 } from '@brewtify/shared';
 import { decrypt, encrypt, generateSalt } from '../services/encryption';
-import { accessToken, hostFor, spotify } from './auth';
+import { hostFor } from './auth';
 import { PartyError, telegramUrl } from './config';
 import { parseSongLink } from './catalog';
 import { hash, identity, secret, throttle, type MiniSession } from './security';
@@ -25,7 +25,6 @@ export interface Room {
   join_hash: string;
   encrypted_join: string;
   salt: string;
-  device_id: string;
   status: PartyRoomStatus;
   mode: PartyMode;
   blocked_reason: string | null;
@@ -55,7 +54,6 @@ export function roomDto(room: Room, who: MiniSession): PartyRoomDto {
     status: room.expires_at <= new Date() ? 'expired' : room.status,
     mode: room.mode,
     expiresAt: room.expires_at.toISOString(),
-    deviceId: room.owner === who.principal ? room.device_id : '',
     blockedReason: room.blocked_reason,
     isHost: room.owner === who.principal,
   };
@@ -125,41 +123,13 @@ export async function invite(room: Room, who: MiniSession): Promise<string> {
   requireLive(room);
   return telegramUrl(`p_${decrypt(room.encrypted_join, room.salt)}`);
 }
-export async function devices(who: MiniSession) {
-  const host = await hostFor(who.principal);
-  return hostLock(host.account_key, async (client) => {
-    const fresh = await hostFor(who.principal, client);
-    return spotify().devices(await accessToken(fresh, client));
-  });
-}
-export async function validateDevice(
-  token: string,
-  deviceId: string
-): Promise<void> {
-  const available = await spotify().devices(token);
-  const selected = available.find((device) => device.id === deviceId);
-  if (
-    !selected ||
-    !selected.isActive ||
-    selected.isRestricted ||
-    available.some((device) => device.isActive && device.id !== deviceId)
-  ) {
-    throw new PartyError(
-      409,
-      'device_confirmation_required',
-      'Open Spotify, start playback on your speaker, and confirm its active unrestricted device.'
-    );
-  }
-}
 export async function createRoom(
   who: MiniSession,
-  deviceId: string,
   mode: PartyMode = 'auto'
 ): Promise<{ room: PartyRoomDto; inviteUrl: string }> {
   const host = await hostFor(who.principal);
   return hostLock(host.account_key, async (client) => {
     const fresh = await hostFor(who.principal, client);
-    await validateDevice(await accessToken(fresh, client), deviceId);
     return transaction(async (tx) => {
       await tx.query(
         'DELETE FROM party_rooms WHERE account_key=$1 AND expires_at<=now()',
@@ -170,17 +140,15 @@ export async function createRoom(
         [host.account_key],
         tx
       );
-      if (existing)
-        throw new PartyError(
-          409,
-          'room_already_exists',
-          'This Spotify host already has an active party.'
-        );
+      if (existing) {
+        requireOwner(existing, who);
+        return { room: roomDto(existing, who), inviteUrl: await invite(existing, who) };
+      }
       const join = secret();
       const salt = generateSalt();
       const [room] = await rows<Room>(
-        `INSERT INTO party_rooms (id,owner,account_key,join_hash,encrypted_join,salt,device_id,mode,expires_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '12 hours') RETURNING *`,
+        `INSERT INTO party_rooms (id,owner,account_key,join_hash,encrypted_join,salt,mode,expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,now()+interval '12 hours') RETURNING *`,
         [
           randomUUID(),
           who.principal,
@@ -188,7 +156,6 @@ export async function createRoom(
           hash(join),
           encrypt(join, salt),
           salt,
-          deviceId,
           mode,
         ],
         tx
@@ -403,25 +370,13 @@ export async function roomAction(
   who: MiniSession,
   id: string,
   action: string,
-  options: { deviceId?: string; mode?: string }
+  options: { mode?: string }
 ): Promise<void> {
   const room = await getRoom(id);
   requireOwner(room, who);
   await hostLock(room.account_key, async (client) => {
     const fresh = await getRoom(id, client);
     requireLive(fresh);
-    if (action === 'device') {
-      if (!options.deviceId)
-        throw new PartyError(
-          400,
-          'device_required',
-          'Select an active device.'
-        );
-      await validateDevice(
-        await accessToken(await hostFor(who.principal, client), client),
-        options.deviceId
-      );
-    }
     await transaction(async (tx) => {
       if (action === 'close') return closeRoom(tx, fresh);
       if (action === 'lock' || action === 'unlock') {
@@ -440,17 +395,24 @@ export async function roomAction(
           id,
           options.mode,
         ]);
-      } else if (action === 'device') {
-        if (fresh.blocked_reason === 'delivery_unknown')
+      } else if (action === 'resume_playback') {
+        if (fresh.blocked_reason !== 'device_unavailable')
           throw new PartyError(
             409,
-            'delivery_unknown',
-            'Acknowledge the uncertain queue command first.'
+            'invalid_transition',
+            'Only playback-unavailable failures can be resumed here.'
           );
         await tx.query(
-          'UPDATE party_rooms SET device_id=$2,blocked_reason=NULL WHERE id=$1',
-          [id, options.deviceId]
+          'UPDATE party_rooms SET blocked_reason=NULL WHERE id=$1',
+          [id]
         );
+        const rejected = await rows<{ id: string }>(
+          `UPDATE party_requests SET status='approved',failure_code=NULL
+          WHERE room_id=$1 AND status='failed' AND failure_code='device_unavailable' RETURNING id`,
+          [id],
+          tx
+        );
+        for (const request of rejected) await createJob(tx, id, request.id, 'deliver');
       } else if (action === 'acknowledge_unknown') {
         const [recent] = await rows(
           `SELECT id FROM party_delivery_attempts WHERE room_id=$1 AND outcome IN ('sending','unknown')

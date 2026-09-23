@@ -2,7 +2,7 @@ import type { PartyCandidate, PartyDevice } from '@brewtify/shared';
 import { Agent } from 'undici';
 import { createProviderLookup } from './network';
 
-export const PARTY_SPOTIFY_SCOPES = ['user-modify-playback-state', 'user-read-playback-state'] as const;
+export const PARTY_SPOTIFY_SCOPES = ['user-modify-playback-state'] as const;
 export const SPOTIFY_TRACK_ID = /^[A-Za-z0-9]{22}$/;
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/i;
 export const PROVIDER_DEADLINE_MS = 8_000;
@@ -353,11 +353,12 @@ export class SpotifyClient {
     return items.map(decodeTrack);
   }
 
-  async enqueue(token: string, trackId: string, deviceId: string): Promise<void> {
-    if (!SPOTIFY_TRACK_ID.test(trackId) || !deviceId || deviceId.length > 256 || /[\u0000-\u0020]/.test(deviceId)) {
+  async enqueue(token: string, trackId: string, deviceId?: string): Promise<void> {
+    if (!SPOTIFY_TRACK_ID.test(trackId) || (deviceId !== undefined && (!deviceId || deviceId.length > 256 || /[\u0000-\u0020]/.test(deviceId)))) {
       throw new SpotifyError('invalid_input');
     }
-    const params = new URLSearchParams({ uri: `spotify:track:${trackId}`, device_id: deviceId });
+    const params = new URLSearchParams({ uri: `spotify:track:${trackId}` });
+    if (deviceId !== undefined) params.set('device_id', deviceId);
     await this.request('spotify', `me/player/queue?${params}`, {
       method: 'POST', headers: this.headers(token),
     }, 'queue');

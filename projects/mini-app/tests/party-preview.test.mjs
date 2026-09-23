@@ -37,7 +37,7 @@ test('provider failures have actionable labels without telling guests to log in'
   assert.match(partyFailureMessage('unauthorized'), /reconnect Party Spotify/);
   assert.match(partyFailureMessage('premium_required'), /Premium/);
   assert.match(partyFailureMessage('insufficient_scope'), /grant playback access/);
-  assert.match(partyFailureMessage('device_unavailable'), /active device/);
+  assert.match(partyFailureMessage('device_unavailable'), /start playing music, then tap Try again/);
   assert.match(partyFailureMessage('delivery_settling'), /two-minute safety window/);
   assert.equal(partyFailureMessage('recording_changed'), 'Spotify recording details changed. Resolve the request again and approve the version before adding.');
   for (const code of ['apple_configuration', 'apple_unauthorized', 'apple_rate_limited', 'apple_unavailable', 'apple_invalid_response', 'apple_rejected']) {

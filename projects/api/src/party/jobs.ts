@@ -10,7 +10,6 @@ import {
   createJob,
   getRoom,
   requireLive,
-  validateDevice,
   type Room,
   type SongRequest,
 } from './rooms';
@@ -267,7 +266,6 @@ async function deliver(
   const token = await accessToken(await hostFor(room.owner, client), client);
   const track = await spotify().track(token, request.selected.id);
   assertSelectedRecording(track, request.selected);
-  await validateDevice(token, room.device_id);
   const attempt = randomUUID();
   await transaction(async (tx) => {
     requireLive(await getRoom(room.id, tx));
@@ -279,7 +277,7 @@ async function deliver(
   // Nothing before this commit can have sent a queue command. Nothing after it is
   // automatically retryable unless Spotify explicitly rejects the command.
   try {
-    await spotify().enqueue(token, request.selected.id, room.device_id);
+    await spotify().enqueue(token, request.selected.id);
   } catch (error) {
     const outcome = deliveryOutcome(error);
     await transaction(async (tx) => {
@@ -407,9 +405,7 @@ export async function runJob(id: string, generation: number): Promise<void> {
           await done(tx, job);
         } else if (
           (error instanceof PartyError &&
-            ['device_confirmation_required', 'host_reconnect'].includes(
-              code
-            )) ||
+            code === 'host_reconnect') ||
           (error instanceof SpotifyError &&
             [401, 403].includes(error.status ?? 0))
         ) {

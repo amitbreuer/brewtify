@@ -120,7 +120,6 @@ model PartyRoom {
   joinHash      String   @unique @map("join_hash")
   encryptedJoin String   @map("encrypted_join")
   salt          String
-  deviceId      String   @map("device_id")
   status        String   @default("open")
   mode          String   @default("auto")
   blockedReason String?  @map("blocked_reason")

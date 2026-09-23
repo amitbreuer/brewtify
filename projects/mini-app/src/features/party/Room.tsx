@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PartyDevice, PartyFeed, PartyRequestDto, PartyRoomDto } from '@brewtify/shared';
+import type { PartyFeed, PartyRequestDto, PartyRoomDto } from '@brewtify/shared';
 import QRCode from 'qrcode';
 import { mergeFeed } from '../../lib/navigation';
 import { PartyClient, PartyError, errorText } from './api';
-import { DevicePicker } from './DevicePicker';
 import { RequestCard } from './RequestCard';
 import type { RequestAction } from './RequestCard';
 import { usePolling } from './usePolling';
@@ -27,9 +26,6 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
   const [inviteUrl, setInviteUrl] = useState('');
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
-  const [devices, setDevices] = useState<PartyDevice[]>([]);
-  const [deviceId, setDeviceId] = useState('');
-  const [showDevices, setShowDevices] = useState(false);
   const cursor = useRef<string | null>(null);
   const submission = useRef<{ signature: string; key: string } | null>(null);
   const path = `/rooms/${encodeURIComponent(initialRoom.id)}`;
@@ -112,14 +108,6 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
     });
   }
 
-  async function loadDevices() {
-    await run(async () => {
-      const result = await client.request<{ devices: PartyDevice[] }>('/devices');
-      setDevices(result.devices);
-      setShowDevices(true);
-    });
-  }
-
   async function copyInvite() {
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -144,24 +132,16 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
         {inactive && <p role="status">Party {status === 'expired' ? 'expired' : 'ended'}.</p>}
         {room.status === 'locked' && <p role="status">New songs are paused.</p>}
         {room.blockedReason && <div className="party-warning" role="status">{partyFailureMessage(room.blockedReason)}</div>}
-        {room.isHost && !inactive && (room.status === 'locked' || room.blockedReason || showDevices) && (
+        {room.isHost && !inactive && (room.status === 'locked' || room.blockedReason) && (
           <>
             <div className="party-actions">
               {room.status === 'locked' && <button disabled={busy} className="party-secondary" onClick={() => void roomAction('unlock')}>Resume songs</button>}
-              {room.blockedReason && room.blockedReason !== 'delivery_unknown' && <>
-                <button disabled={busy} className="party-secondary" onClick={() => void loadDevices()}>Confirm playback device</button>
-                <button disabled={busy} className="party-secondary" onClick={onReconnect}>Reconnect Spotify</button>
-              </>}
+              {room.blockedReason === 'device_unavailable' && <button disabled={busy} className="party-secondary" onClick={() => void roomAction('resume_playback')}>Try again</button>}
+              {room.blockedReason && !['delivery_unknown', 'device_unavailable'].includes(room.blockedReason) && <button disabled={busy} className="party-secondary" onClick={onReconnect}>Reconnect Spotify</button>}
             </div>
             {room.blockedReason === 'delivery_unknown' && <button disabled={busy} className="party-secondary" onClick={() => {
               if (window.confirm('A previous command may already have added its song. Acknowledge the uncertainty to resume other requests? This does not retry the unknown request.')) void roomAction('acknowledge_unknown');
             }}>Acknowledge unknown outcome & resume</button>}
-            {showDevices && (
-              <section className="party-stack">
-                <DevicePicker devices={devices} value={deviceId} onChange={setDeviceId} onRefresh={() => void loadDevices()} busy={busy} />
-                <button disabled={busy || !devices.some((device) => device.id === deviceId && device.isActive && !device.isRestricted)} onClick={() => void roomAction('device', { deviceId })}>Use this device for new additions</button>
-              </section>
-            )}
           </>
         )}
       </section>}

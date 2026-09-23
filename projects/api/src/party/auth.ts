@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { PoolClient } from 'pg';
-import { SpotifyClient } from '@brewtify/spotify';
+import { PARTY_SPOTIFY_SCOPES, SpotifyClient } from '@brewtify/spotify';
 import { decrypt, encrypt, generateSalt } from '../services/encryption';
 import { PartyError, partyOrigin, required, telegramUrl } from './config';
 import { database, hostLock, rows, transaction } from './store';
@@ -268,8 +268,7 @@ export async function finishAuthorization(
       req.query.code,
       decrypt(flow.encrypted_verifier, flow.salt)
     );
-    const scopes = ['user-modify-playback-state', 'user-read-playback-state'];
-    if (!scopes.every((scope) => tokens.scopes.includes(scope)))
+    if (!PARTY_SPOTIFY_SCOPES.every((scope) => tokens.scopes.includes(scope)))
       throw new PartyError(
         403,
         'insufficient_scope',

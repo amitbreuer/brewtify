@@ -14,6 +14,13 @@ the chosen version without a second approval. Recovery controls appear only
 when playback needs attention. Existing approval-mode rooms retain their mode;
 the API still accepts that mode for older clients.
 
+Start party authorizes Spotify when needed, then opens the room automatically.
+There is no device-selection screen or separate create step. Queue commands use
+the host's token and omit `device_id`, so Spotify targets that account's active
+playback. Switching devices in Spotify intentionally moves subsequent additions
+with it; Brewtify never transfers playback. This replaces the original
+device-pinning behavior for all rooms, including existing ones.
+
 ## Release gate
 
 `PARTY_ENABLED` defaults to false. Existing Library navigation and bot behavior
@@ -29,8 +36,10 @@ Required before real pilot traffic:
   authorization allocation, commonly five), a deliberately selected Premium
   host, and the exact dedicated callback URI registered on the app.
 - Minimal-scope `/me` identity, host-token catalog/playability/relinking,
-  search (limit ten), device discovery and queue access verified with that app.
-  Party requests only `user-read-playback-state user-modify-playback-state`.
+  search (limit ten), and active-playback queue access verified with that app.
+  Party now requests only `user-modify-playback-state`; device discovery and its
+  read-playback scope are no longer used. Existing grants with the extra read
+  scope remain compatible until revoked or reauthorized.
   The Premium checkbox is an explicit requirement, not proof from a removed
   profile property. Only an explicit provider Premium error is labeled Premium.
 - Apple Music developer team ID, key ID and ES256 signing private key. No
@@ -44,7 +53,7 @@ Required before real pilot traffic:
 - Real HTTPS Android/iOS/Desktop Telegram checks of signed `initData`, Secure
   HttpOnly cookies, invitations, BackButton and external-browser OAuth return.
   A local browser preview is not proof of any of these integrations.
-- An explicitly authorized deliberate song for the final queue test. Setup never
+- An explicitly authorized deliberate song for the final queue test. Starting a party never
   enqueues a surprise eligibility probe.
 
 Missing configuration returns an actionable error; it is never a catalog no-match
@@ -72,6 +81,12 @@ approval, mark that baseline applied and deploy the additive Party migration:
 npx prisma migrate resolve --applied 20260922000000_library_baseline
 npx prisma migrate deploy
 ```
+
+The later `20260923093000_party_active_playback` migration drops the retired
+Party device column and normalizes legacy device-blocked states. Keep Party
+disabled and drain/pause old Party workers while applying this migration and
+deploying the matching API revision; old device-pinning code is incompatible
+with the removed column. Library data is unchanged.
 
 Never run `db push`, reset, or automatically mark an unknown schema as baselined.
 Keep the custom partial unique indexes, status checks, approval sequence and
@@ -127,8 +142,10 @@ Mini App session/principal. A one-use launch ticket establishes a separate exter
 browser cookie, random OAuth state and S256 verifier. Callback consumption is
 atomic. The Mini App polls its transaction with its own cookie; it does not rely
 on the browser sharing cookies. Return-to-Telegram links grant no host privileges.
-Cancellation/replay/expiry require a new explicit Start. Abandoned connected
-setup credentials expire after 30 minutes. Active rooms have a fixed 12-hour TTL.
+Cancellation/replay/expiry require a new explicit Start. Connected credentials
+not yet attached to a room expire after 30 minutes. Active rooms have a fixed
+12-hour TTL. Creating a room again for its verified owner returns the existing
+room and invitation without extending the TTL or duplicating the room.
 
 Party token refresh uses database serialization and preserves rotated refresh
 tokens. Explicit revocation deletes Party credentials, not Library tokens.
@@ -169,11 +186,17 @@ tick; visible Mini App polling is not a background worker.
 Session-pinned PostgreSQL advisory locks serialize an account across processes
 and instances, including token refresh, moderation, close and delivery. One active
 room per account is also enforced by a partial unique index. A sending attempt is
-committed **before** the sole Spotify queue POST. Device revalidation never
-transfers playback or chooses a different device. Direct links reject relinking
+committed **before** the sole Spotify queue POST. No device ID is discovered,
+stored or sent by Party; Spotify resolves active playback. Direct links reject relinking
 or missing playability evidence. Approval order applies in approval mode; eligible
 auto-mode requests use submission order. Pending/unapproved songs do not block
 approved requests.
+
+An explicit queue 404 is a known rejection, not an uncertain delivery. It pauses
+the room and asks the host to start music in Spotify and tap **Try again**.
+That CSRF-protected owner action resumes only playback-unavailable failures
+and pending jobs; it cannot bypass an unknown-delivery block. No automatic
+repeat occurs while playback is unavailable, and no test track is queued.
 
 Spotify 204 is success without JSON decoding. Explicit 429 responses persist
 `Retry-After` in the job, with no in-process sleeping. Read failures have bounded
@@ -208,7 +231,7 @@ OS users or changes shared database services.
 
 The frontend README describes the development-only visual fixture and unique
 preview port. Add `&demo=host` to `/app/?section=party` to use the interactive,
-sample-data Host/Guest/Setup screens; these reuse the real UI components with
+sample-data Host/Guest/Start screens; these reuse the real room components with
 a browser-local transport that never calls Party APIs or providers. Production
 builds exclude this demo. Production party routes have no fixture identity. Real Telegram
 tests require an HTTPS staging deployment/test bot, signed fresh launch data,
@@ -218,19 +241,20 @@ actual allowlisted host. Record those results separately before enabling the pil
 With the visual fixture running at `http://127.0.0.1:5197` and Google Chrome
 installed, `npm run test:party-browser` verifies mobile layout, no Library fetch
 on Party entry, navigation during Library loading/failure, the disabled gate, and
-the slim sample flow and nameless submission/CSRF contract using explicitly
-stubbed browser fixtures.
+the slim sample flow, nameless submission/CSRF contract, direct start after
+OAuth, reload/reconnect, failed-creation recovery and explicit playback retry
+using browser fixtures, not real provider authentication.
 Override `PARTY_PREVIEW_URL` or `CHROME_PATH` for another local preview/browser.
 The full legacy frontend lint currently has 27 existing errors in untouched files;
 the focused `lint:party` gate covers changed frontend code without suppressing them.
 
 ### Implementation verification (2026-09-22, updated 2026-09-23)
 
-The isolated worktree passed all five workspace builds, 39 provider/transport
+The isolated worktree passed all five workspace builds, 40 provider/transport
 tests, 15 catalog/Telegram tests, 16 native PostgreSQL/HTTP integration scenarios,
-17 frontend tests, five headless Chrome browser checks, targeted frontend lint,
+17 frontend tests, seven headless Chrome browser checks, targeted frontend lint,
 and Terraform initialization/validation without applying infrastructure.
-The PostgreSQL suite runs all three migrations and verifies zero Prisma schema drift.
+The PostgreSQL suite runs all four migrations and verifies zero Prisma schema drift.
 Docker image execution was not available because the local Docker daemon was not
 running. No real provider authorization, Telegram client session, Cloud Tasks
 dispatch, production migration, or Spotify queue write was performed.

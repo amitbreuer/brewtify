@@ -35,11 +35,8 @@ Object.assign(process.env, {
 let pg, server, base, store, jobs;
 let queueCalls = 0;
 let queueFailure;
-let providerDevices = [
-  { id: 'speaker', name: 'Speaker', isActive: true, isRestricted: false },
-];
 const trackId = '0123456789ABCDEFGHIJKL';
-const scopes = ['user-modify-playback-state', 'user-read-playback-state'];
+const scopes = ['user-modify-playback-state'];
 const tokens = {
   accessToken: 'access',
   refreshToken: 'refresh',
@@ -119,9 +116,10 @@ before(async () => {
     accessToken: 'rotated',
     refreshToken: 'rotated-refresh',
   }));
-  mock.method(SpotifyClient.prototype, 'devices', async () => providerDevices);
+  mock.method(SpotifyClient.prototype, 'devices', async () => { assert.fail('Party must not discover or select devices'); });
   mock.method(SpotifyClient.prototype, 'track', async () => track);
-  mock.method(SpotifyClient.prototype, 'enqueue', async () => {
+  mock.method(SpotifyClient.prototype, 'enqueue', async (_token, _track, deviceId) => {
+    assert.equal(deviceId, undefined, 'Spotify targets the host account active playback');
     queueCalls++;
     if (queueFailure) throw queueFailure;
   });
@@ -223,7 +221,6 @@ async function authorize(user) {
 }
 async function makeRoom(user) {
   const result = await call('/rooms', user, {
-    deviceId: 'speaker',
     mode: 'host_approval',
   });
   assert.equal(result.response.status, 201, JSON.stringify(result.data));
@@ -308,7 +305,7 @@ test('signed sessions reject raw IDs, origin forgery, tampering and launch repla
         'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL'
       )
     ).length,
-    3
+    4
   );
 });
 test('OAuth browser state mismatch, cancellation, expiration and one-use tickets', async () => {
@@ -372,8 +369,9 @@ test('external browser PKCE returns to verified principal without shared cookies
   assert.equal(queueCalls, 0, 'setup must not enqueue a Premium probe');
   ({ room, inviteUrl: invitation } = await makeRoom(host));
   assert.equal(
-    (await call('/rooms', host, { deviceId: 'speaker' })).data.error.code,
-    'room_already_exists'
+    (await call('/rooms', host, {})).data.room.id,
+    room.id,
+    'creation retries must resume the existing host room'
   );
   const secret = new URL(invitation).searchParams.get('startapp').slice(2);
   assert.equal((await call('/join', member, { secret })).response.status, 200);
@@ -415,13 +413,14 @@ test('same Spotify account cannot be claimed by another Telegram principal', asy
 });
 test('refresh is serialized, preserves rotation, and never overwrites Library credentials', async () => {
   const { decrypt } = require('../dist/services/encryption.js');
+  const { accessToken, hostFor } = require('../dist/party/auth.js');
   await store.rows(
     "UPDATE party_host_sessions SET token_expires_at=now()-interval '1 second'"
   );
-  const first = await call('/devices', host);
-  const second = await call('/devices', host);
-  assert.equal(first.response.status, 200);
-  assert.equal(second.response.status, 200);
+  const [owner] = await store.rows('SELECT principal,account_key FROM party_host_sessions');
+  const readToken = () => store.hostLock(owner.account_key, async client => accessToken(await hostFor(owner.principal, client), client));
+  assert.equal(await readToken(), 'rotated');
+  assert.equal(await readToken(), 'rotated');
   assert.equal(SpotifyClient.prototype.refresh.mock.callCount(), 1);
   const [stored] = await store.rows('SELECT * FROM party_host_sessions');
   assert.equal(
@@ -488,7 +487,7 @@ test('idempotent submission, own receipts, approval and successful queue accepta
   const hostRequest = await song(host, room.id);
   const guestFeed = (await call(`/rooms/${room.id}/requests`, member)).data;
   assert.ok(!guestFeed.requests.some((r) => r.id === hostRequest));
-  assert.equal(guestFeed.room.deviceId, '');
+  assert.equal('deviceId' in guestFeed.room, false);
 });
 test('outbox creation failures stay recoverable and named-task replay is idempotent', async () => {
   const { CloudTasksClient } = require('@google-cloud/tasks');
@@ -544,7 +543,7 @@ test('outbox creation failures stay recoverable and named-task replay is idempot
     close.mock.restore();
   }
 });
-test('locked accepts moderation, not submissions; device changes pause without transfer', async () => {
+test('locked accepts moderation; unavailable playback requires explicit resume without device discovery', async () => {
   const id = await song(member, room.id);
   await runPending(id, 'resolve');
   await call(`/rooms/${room.id}/action`, host, { action: 'lock' });
@@ -557,25 +556,23 @@ test('locked accepts moderation, not submissions; device changes pause without t
   await call(`/rooms/${room.id}/requests/${id}/action`, host, {
     action: 'approve',
   });
-  providerDevices = [
-    { id: 'different', name: 'Different', isActive: true, isRestricted: false },
-  ];
+  queueFailure = new SpotifyError('device_unavailable', 404);
   const before = queueCalls;
   await runPending(id, 'deliver');
-  assert.equal(queueCalls, before);
+  assert.equal(queueCalls, before + 1);
   assert.equal(
     (await call(`/rooms/${room.id}/requests`, host)).data.room.blockedReason,
-    'device_confirmation_required'
+    'device_unavailable'
   );
-  providerDevices = [
-    { id: 'speaker', name: 'Speaker', isActive: true, isRestricted: false },
-  ];
-  await call(`/rooms/${room.id}/action`, host, {
-    action: 'device',
-    deviceId: 'speaker',
-  });
   await runPending(id, 'deliver');
   assert.equal(queueCalls, before + 1);
+  assert.equal((await call(`/rooms/${room.id}/action`, member, { action: 'resume_playback' })).response.status, 403);
+  queueFailure = undefined;
+  assert.equal((await call(`/rooms/${room.id}/action`, host, { action: 'resume_playback' })).response.status, 200);
+  await runPending(id, 'deliver');
+  await runPending(id, 'deliver');
+  assert.equal(queueCalls, before + 2);
+  assert.equal(SpotifyClient.prototype.devices.mock.callCount(), 0);
   await call(`/rooms/${room.id}/action`, host, { action: 'unlock' });
 });
 test('429 rejection persists retry timing; timeout never automatically repeats', async () => {
@@ -608,6 +605,7 @@ test('429 rejection persists retry timing; timeout never automatically repeats',
   ).data.requests.find((r) => r.id === id);
   assert.equal(receipt.status, 'failed');
   assert.equal(receipt.failureCode, 'delivery_unknown');
+  assert.equal((await call(`/rooms/${room.id}/action`, host, { action: 'resume_playback' })).response.status, 409);
   await runPending(id, 'deliver');
   assert.equal(queueCalls, before + 2);
   assert.equal(
@@ -890,10 +888,16 @@ test('new parties auto-add unnamed guest submissions and selected versions witho
   process.env.PARTY_ENABLED = 'true';
   SpotifyClient.prototype.enqueue.mock.mockImplementation(async () => { queueCalls++; });
   await authorize(host);
-  const created = await call('/rooms', host, { deviceId: 'speaker' });
+  const created = await call('/rooms', host, {});
   assert.equal(created.response.status, 201, JSON.stringify(created.data));
   const active = created.data.room;
   assert.equal(active.mode, 'auto');
+  assert.equal('deviceId' in active, false);
+  assert.equal(SpotifyClient.prototype.devices.mock.callCount(), 0);
+  const resumed = await call('/rooms', host, {});
+  assert.equal(resumed.data.room.id, active.id);
+  assert.equal(resumed.data.inviteUrl, created.data.inviteUrl);
+  assert.equal((await store.rows("SELECT id FROM party_rooms WHERE status='open'")).length, 1);
   assert.equal((await call('/config')).data.autoEnabled, true);
   const secret = new URL(created.data.inviteUrl).searchParams.get('startapp').slice(2);
   await call('/join', member, { secret });

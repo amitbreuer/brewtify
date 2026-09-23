@@ -17,11 +17,16 @@ There is no development identity bypass: Party bootstraps with signed
 `Telegram.WebApp.initData`, uses same-origin session cookies, and sends
 `X-Party-CSRF` on mutations. Provider credentials never enter the Mini App.
 
-Only explicit host setup starts Spotify consent, after Premium confirmation.
+Start party starts Spotify consent when needed, after Premium confirmation.
 OAuth opens via Telegram `openLink`; the original Mini App polls its own
 authorization transaction rather than assuming the external browser shares
-cookies. Reopening resumes from the session and authorization endpoints.
-Device selection never transfers playback. Unknown delivery outcomes require
+cookies. After consent, the room opens automatically; there is no device picker
+or separate create step. Reopening resumes unfinished creation or the existing
+room. Room creation is idempotent for the same verified host; failures have an
+explicit Start party retry rather than a background mutation-retry loop.
+Queue commands omit `device_id` and follow the host's active Spotify playback.
+An explicit no-active-playback rejection shows a host-only Try again action
+after starting music in Spotify. Unknown delivery outcomes require
 explicit duplicate-risk confirmation before a retry.
 
 Feeds poll while visible, merge changed receipts by ID using the returned
@@ -42,7 +47,7 @@ npm run build --workspace=mini-app
 Node's built-in tests cover launch/navigation rules, invitation parsing, lazy
 Library boundary regressions, changed-feed merging, backoff, signed bootstrap,
 cookie/CSRF requests, and non-replayed writes. Real Telegram WebView cookies,
-external OAuth return, device selection, and actual Spotify delivery still
+external OAuth return, active-playback targeting, and actual Spotify delivery still
 require an authorized integration pilot.
 
 On re-entry, Party first restores `GET /api/party/session`; only a 401 triggers
@@ -145,9 +150,11 @@ export default defineConfig([
 With `VITE_PARTY_PREVIEW=true` on the Vite development server, open
 `/app/?section=party&demo=host` to review the actual slim host room and song
 components with sample songs. The preview toolbar switches to Guest view and
-Host setup. Guests only paste a song link and choose Add song; the demo shows
+Start screen (`demo=start`; old `demo=setup` links also open this screen).
+The sample Start party button opens the host room directly, simulating consent
+without a device picker. Guests only paste a song link and choose Add song; the demo shows
 it added immediately with no approval or display-name form. There is no room
-settings panel. End party and setup device selection update local sample state.
+settings panel. Start party and End party update local sample state.
 Reset samples restores the example songs.
 
 The host room uses an accessible end-party icon. Both host and guest rooms omit

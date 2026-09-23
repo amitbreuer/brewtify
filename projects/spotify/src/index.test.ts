@@ -39,6 +39,7 @@ test('shared authorization builder preserves legacy scope configuration and exac
 });
 
 test('PKCE authorization requests only playback scopes', () => {
+  assert.deepEqual(PARTY_SPOTIFY_SCOPES, ['user-modify-playback-state']);
   const url = new URL(client().authorizationUrl({ state: 'random-state', codeChallenge: 'a'.repeat(43) }));
   assert.equal(url.origin, 'https://accounts.spotify.com');
   assert.equal(url.searchParams.get('scope'), PARTY_SPOTIFY_SCOPES.join(' '));
@@ -53,7 +54,7 @@ test('PKCE exchange and refresh preserve rotated credentials without client secr
   const calls: { url: string; init?: RequestInit }[] = [];
   t.mock.method(globalThis, 'fetch', async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
     calls.push({ url: url.toString(), init });
-    return json({ access_token: 'access', refresh_token: 'rotated', expires_in: 3600, scope: 'user-modify-playback-state user-read-playback-state' });
+    return json({ access_token: 'access', refresh_token: 'rotated', expires_in: 3600, scope: 'user-modify-playback-state' });
   });
   const tokens = await client().exchange('code', 'v'.repeat(43));
   assert.deepEqual(tokens, { accessToken: 'access', refreshToken: 'rotated', expiresIn: 3600, scopes: [...PARTY_SPOTIFY_SCOPES] });
@@ -88,6 +89,25 @@ test('204 enqueue is one POST with query parameters and no JSON decoding', async
   assert.equal(count, 1);
 });
 
+test('enqueue uses active playback when device ID is omitted and rejects invalid explicit targets', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    calls++;
+    const url = new URL(String(input));
+    assert.equal(url.pathname, '/v1/me/player/queue');
+    assert.equal(url.searchParams.has('device_id'), false);
+    assert.equal(url.searchParams.get('uri'), `spotify:track:${ID}`);
+    assert.equal(init?.method, 'POST');
+    return new Response(null, { status: 204 });
+  });
+  await client().enqueue('token', ID);
+  for (const device of ['', 'bad device', 'x'.repeat(257)]) {
+    await assert.rejects(client().enqueue('token', ID, device), { code: 'invalid_input' });
+  }
+  await assert.rejects(client().enqueue('token', 'invalid'), { code: 'invalid_input' });
+  assert.equal(calls, 1);
+});
+
 test('every queue error performs exactly one write, with explicit uncertainty classification', async t => {
   const cases: { status?: number; body?: unknown; code: string; unknown: boolean }[] = [
     { status: 429, body: { error: { message: 'rate limited' } }, code: 'rate_limited', unknown: false },
@@ -111,7 +131,7 @@ test('every queue error performs exactly one write, with explicit uncertainty cl
         if (fixture.status === undefined) throw new TypeError('connection reset');
         return json(fixture.body, fixture.status, { 'Retry-After': '23', Location: 'http://127.0.0.1' });
       });
-      await assert.rejects(client().enqueue('token', ID, 'speaker'), (error: unknown) => {
+      await assert.rejects(client().enqueue('token', ID), (error: unknown) => {
         assert.ok(error instanceof SpotifyError);
         assert.equal(error.code, fixture.code);
         assert.equal(error.unknownDelivery, fixture.unknown);

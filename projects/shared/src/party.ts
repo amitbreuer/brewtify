@@ -46,7 +46,6 @@ export interface PartyRoomDto {
   status: PartyRoomStatus;
   mode: PartyMode;
   expiresAt: string;
-  deviceId: string;
   blockedReason: string | null;
   isHost: boolean;
 }

@@ -23,7 +23,6 @@ import { cleanup, dispatchOutbox, runJob, verifyInternal } from './jobs';
 import {
   createRoom,
   currentRoom,
-  devices,
   disconnect,
   feed,
   getRoom,
@@ -211,9 +210,6 @@ partyRoutes.post('/disconnect', async (_req, res) => {
   await disconnect(who(res));
   res.json({ ok: true });
 });
-partyRoutes.get('/devices', async (_req, res) => {
-  res.json({ devices: await devices(who(res)) });
-});
 partyRoutes.post('/rooms', async (req, res) => {
   const mode: unknown = req.body?.mode ?? 'auto';
   if (mode !== 'auto' && mode !== 'host_approval')
@@ -222,7 +218,7 @@ partyRoutes.post('/rooms', async (req, res) => {
       'invalid_mode',
       'Invalid party mode.'
     );
-  res.status(201).json(await createRoom(who(res), field(req, 'deviceId', 256), mode));
+  res.status(201).json(await createRoom(who(res), mode));
 });
 partyRoutes.post('/join', async (req, res) => {
   await throttle(`join:${who(res).principal}`, 12, 60);
@@ -257,10 +253,6 @@ partyRoutes.post('/rooms/:id/requests', async (req, res) => {
 });
 partyRoutes.post('/rooms/:id/action', async (req, res) => {
   await roomAction(who(res), param(req, 'id'), field(req, 'action', 32), {
-    deviceId:
-      typeof req.body?.deviceId === 'string'
-        ? field(req, 'deviceId', 256)
-        : undefined,
     mode:
       typeof req.body?.mode === 'string' ? field(req, 'mode', 32) : undefined,
   });

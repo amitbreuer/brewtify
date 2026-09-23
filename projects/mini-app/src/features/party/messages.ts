@@ -7,10 +7,7 @@ const messages: Record<string, string> = {
   reconnect_required: 'Reconnect Party Spotify to restore playback permission.',
   premium_required: 'Spotify confirmed Premium is required. Check the host subscription before continuing.',
   insufficient_scope: 'Spotify playback permission is missing. The host needs to reconnect Party Spotify and grant playback access.',
-  device_changed: 'A different Spotify device is active. The host needs to confirm the intended active device.',
-  device_unavailable: 'The chosen Spotify device is unavailable. Start playback in Spotify, then refresh and confirm an active device.',
-  device_restricted: 'Spotify restricts playback control on this device. Choose another active device.',
-  device_confirmation_required: 'Start playback on the intended Spotify device, then refresh and confirm that active, unrestricted device.',
+  device_unavailable: 'Spotify has no available active playback. The host should open Spotify, start playing music, then tap Try again.',
   rate_limited: 'Spotify is rate-limiting requests. Approved requests are waiting for a safe retry.',
   forbidden: 'Spotify denied playback access. Check the pilot allowlist and device restrictions; this does not necessarily mean Premium is missing.',
   apple_configuration: 'Apple Music catalog access is not configured. The Brewtify operator must configure it; guests do not need to sign in.',
@@ -24,5 +21,5 @@ const messages: Record<string, string> = {
 };
 
 export function partyFailureMessage(code: string): string {
-  return messages[code] ?? `Party needs attention: ${code.replaceAll('_', ' ')}. Check the host’s Spotify connection and selected device.`;
+  return messages[code] ?? `Party needs attention: ${code.replaceAll('_', ' ')}. Check the host’s Spotify connection and playback.`;
 }

@@ -1,10 +1,5 @@
-import type { PartyCandidate, PartyDevice, PartyRequestDto, PartyRoomDto } from '@brewtify/shared';
+import type { PartyCandidate, PartyRequestDto, PartyRoomDto } from '@brewtify/shared';
 import { PartyClient, PartyError } from '../src/features/party/api.ts';
-
-export const demoDevices: PartyDevice[] = [
-  { id: 'living-room', name: 'Living room speaker', isActive: true, isRestricted: false },
-  { id: 'laptop', name: 'My laptop', isActive: false, isRestricted: false },
-];
 
 function artwork(color: string, accent: string): string {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="12" fill="${color}"/><circle cx="100" cy="60" r="50" fill="${accent}" opacity=".8"/><path d="M0 130L75 45L160 145V160H0Z" fill="#121212" opacity=".65"/></svg>`)}`;
@@ -37,7 +32,7 @@ export class PartyDemoClient extends PartyClient {
     this.room = {
       id: 'demo-room', status: 'open', mode: 'auto',
       expiresAt: new Date(Date.now() + 12 * 3600_000).toISOString(),
-      deviceId: 'living-room', blockedReason: null, isHost,
+      blockedReason: null, isHost,
     };
   }
 
@@ -46,9 +41,7 @@ export class PartyDemoClient extends PartyClient {
     const route = path.split('?')[0];
     const input = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     let result: unknown;
-    if (route === '/devices' && body === undefined) {
-      result = { devices: demoDevices };
-    } else if (route === '/rooms/demo-room/invite' && body === undefined) {
+    if (route === '/rooms/demo-room/invite' && body === undefined) {
       result = { inviteUrl: 'https://example.invalid/party-demo-not-a-real-invitation' };
     } else if (route === '/rooms/demo-room/requests' && body === undefined) {
       result = { room: this.room, requests: this.room.isHost ? this.requests : this.requests.filter(request => request.displayName === 'You'), nextCursor: String(this.revision) };
@@ -70,7 +63,6 @@ export class PartyDemoClient extends PartyClient {
       else if (input.action === 'unlock') this.room.status = 'open';
       else if (input.action === 'close') this.room.status = 'closed';
       else if (input.action === 'mode' && (input.mode === 'auto' || input.mode === 'host_approval')) this.room.mode = input.mode;
-      else if (input.action === 'device' && input.deviceId === 'living-room') this.room.deviceId = input.deviceId;
       else throw new PartyError('That action is unavailable in this local demo.');
       result = { ok: true };
     } else if (/^\/rooms\/demo-room\/requests\/[^/]+\/action$/.test(route) && body !== undefined && this.room.isHost) {

@@ -24,7 +24,7 @@ async function previewPage(options) {
   return page;
 }
 
-test('interactive demo renders host, guest and setup with no API traffic', async () => {
+test('interactive demo renders host, guest and direct start with no API traffic', async () => {
   const page = await previewPage({ viewport: { width: 390, height: 844 } });
   const requests = [];
   const errors = [];
@@ -83,9 +83,11 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   await page.getByRole('heading', { name: 'Your sample song', exact: true }).waitFor();
   assert.equal(await page.getByRole('article').count(), 2);
   assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 0);
-  await page.getByRole('button', { name: 'Host setup', exact: true }).click();
-  await page.getByLabel('Active Spotify device', { exact: true }).selectOption('living-room');
-  await page.getByRole('button', { name: 'Create demo party', exact: true }).click();
+  await page.getByRole('button', { name: 'Start screen', exact: true }).click();
+  assert.equal(await page.getByRole('heading', { name: 'Host setup', exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Active Spotify device', { exact: true }).count(), 0);
+  await page.getByRole('checkbox', { name: 'I have Spotify Premium and will host playback.' }).check();
+  await page.getByRole('button', { name: 'Start party', exact: true }).click();
   await page.getByRole('button', { name: 'End party', exact: true }).waitFor();
   page.once('dialog', dialog => dialog.dismiss());
   await page.getByRole('button', { name: 'End party', exact: true }).click();
@@ -208,7 +210,6 @@ test('recording confirmation and nameless submissions retain the Party CSRF cont
     status: 'open',
     mode: 'host_approval',
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
-    deviceId: 'speaker',
     blockedReason: null,
     isHost: true,
   };
@@ -302,4 +303,124 @@ test('recording confirmation and nameless submissions retain the Party CSRF cont
   );
   assert.deepEqual(failures, []);
   await page.close();
+});
+
+test('hosts go from authorization directly to a room, resume safely, and can retry a failed creation', async () => {
+  for (const scenario of ['new-host', 'authorization-complete', 'already-connected', 'reconnect', 'creation-failure', 'authorization-failure']) {
+    const page = await previewPage({ viewport: { width: 390, height: 844 } });
+    try {
+      const roomFixture = { id: 'start-room', status: 'open', mode: 'auto', expiresAt: new Date(Date.now() + 3600000).toISOString(), blockedReason: null, isHost: true };
+      let connected = ['authorization-complete', 'already-connected', 'reconnect', 'creation-failure'].includes(scenario);
+      let room = scenario === 'reconnect' ? { ...roomFixture, blockedReason: 'unauthorized' } : null;
+      let auth = scenario === 'authorization-complete' ? 'complete' : 'idle';
+      let creations = 0;
+      let authorizations = 0;
+      const unexpected = [];
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({
+        contentType: 'text/javascript',
+        body: "window.Telegram={WebApp:{initData:'browser-fixture-not-valid-auth',ready(){},expand(){},openLink(url){window.openedOAuth=url},BackButton:{show(){},hide(){},onClick(){},offClick(){}},onEvent(){},offEvent(){}}};",
+      }));
+      await page.route('**/api/party/**', async route => {
+        const http = route.request();
+        const path = new URL(http.url()).pathname;
+        let status = 200;
+        let data;
+        if (http.method() === 'POST') assert.equal(http.headers()['x-party-csrf'], 'start-csrf');
+        if (path.endsWith('/config')) data = { enabled: true, autoEnabled: true, telegramUrl: null };
+        else if (path.endsWith('/session')) data = { csrfToken: 'start-csrf', hostConnected: connected, room };
+        else if (path.endsWith('/auth/status')) data = { status: auth, ...(auth === 'failed' ? { error: 'authorization_cancelled' } : {}) };
+        else if (path.endsWith('/auth/start')) {
+          assert.deepEqual(http.postDataJSON(), { premiumConfirmed: true });
+          authorizations++;
+          auth = scenario === 'authorization-failure' ? 'failed' : 'complete';
+          connected = auth === 'complete';
+          if (room) room.blockedReason = null;
+          data = { authorizationUrl: 'https://example.invalid/test-oauth' };
+        } else if (path.endsWith('/rooms')) {
+          assert.deepEqual(http.postDataJSON(), {});
+          creations++;
+          room = roomFixture;
+          if (scenario === 'creation-failure' && creations === 1) {
+            status = 503;
+            data = { error: { code: 'party_unavailable', message: 'Temporary creation failure' } };
+          } else data = { room, inviteUrl: 'https://example.invalid/invite' };
+        } else if (path.endsWith('/invite')) data = { inviteUrl: 'https://example.invalid/invite' };
+        else if (path.endsWith('/requests')) data = { room, requests: [], nextCursor: '1' };
+        else {
+          unexpected.push(path);
+          status = 500;
+          data = { error: { code: 'unexpected', message: path } };
+        }
+        await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+      });
+      await page.goto(`${base}/app/?section=party`);
+      if (scenario === 'new-host' || scenario === 'authorization-failure') {
+        await page.getByRole('checkbox', { name: 'I have Spotify Premium and will host playback.' }).check();
+        await page.getByRole('button', { name: 'Start party', exact: true }).click();
+      } else if (scenario === 'reconnect') {
+        await page.getByRole('button', { name: 'Reconnect Spotify', exact: true }).click();
+      } else if (scenario === 'creation-failure') {
+        await page.getByRole('alert').getByText('Temporary creation failure', { exact: true }).waitFor();
+        await page.waitForTimeout(3200);
+        assert.equal(creations, 1, 'room creation failure must not become an automatic mutation retry loop');
+        await page.getByRole('button', { name: 'Start party', exact: true }).click();
+      }
+      if (scenario === 'authorization-failure') {
+        await page.getByRole('alert').getByText('authorization cancelled', { exact: true }).waitFor();
+        assert.equal(creations, 0);
+      } else {
+        await page.getByRole('button', { name: 'End party', exact: true }).waitFor();
+        assert.equal(creations, scenario === 'reconnect' ? 0 : scenario === 'creation-failure' ? 2 : 1, scenario);
+        await page.reload();
+        await page.getByRole('button', { name: 'End party', exact: true }).waitFor();
+        assert.equal(creations, scenario === 'reconnect' ? 0 : scenario === 'creation-failure' ? 2 : 1, 'reloading an active party must not recreate it');
+      }
+      assert.equal(authorizations, ['new-host', 'reconnect', 'authorization-failure'].includes(scenario) ? 1 : 0);
+      assert.equal(await page.getByRole('heading', { name: 'Host setup', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('combobox').count(), 0);
+      assert.deepEqual(unexpected, [], 'no device endpoint or other unexpected request');
+      assert.deepEqual(errors, []);
+    } finally { await page.close(); }
+  }
+});
+
+test('playback-unavailable recovery is an explicit host action without device selection', async () => {
+  const page = await previewPage();
+  try {
+    const room = { id: 'recovery-room', status: 'open', mode: 'auto', expiresAt: new Date(Date.now() + 3600000).toISOString(), blockedReason: 'device_unavailable', isHost: true };
+    let actions = 0;
+    const unexpected = [];
+    await page.route('https://telegram.org/js/telegram-web-app.js', route => route.fulfill({
+      contentType: 'text/javascript',
+      body: "window.Telegram={WebApp:{initData:'browser-fixture-not-valid-auth',ready(){},expand(){},BackButton:{show(){},hide(){},onClick(){},offClick(){}},onEvent(){},offEvent(){}}};",
+    }));
+    await page.route('**/api/party/**', async route => {
+      const http = route.request();
+      const path = new URL(http.url()).pathname;
+      let data;
+      if (path.endsWith('/config')) data = { enabled: true, autoEnabled: true, telegramUrl: null };
+      else if (path.endsWith('/session')) data = { csrfToken: 'retry-csrf', hostConnected: true, room };
+      else if (path.endsWith('/auth/status')) data = { status: 'idle' };
+      else if (path.endsWith('/invite')) data = { inviteUrl: 'https://example.invalid/invite' };
+      else if (path.endsWith('/requests')) data = { room, requests: [], nextCursor: '1' };
+      else if (path.endsWith('/action')) {
+        assert.equal(http.headers()['x-party-csrf'], 'retry-csrf');
+        assert.deepEqual(http.postDataJSON(), { action: 'resume_playback' });
+        actions++;
+        room.blockedReason = null;
+        data = { ok: true };
+      } else { unexpected.push(path); data = {}; }
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
+    });
+    await page.goto(`${base}/app/?section=party`);
+    await page.getByText(/start playing music, then tap Try again/).waitFor();
+    assert.equal(actions, 0);
+    assert.equal(await page.getByRole('combobox').count(), 0);
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('button', { name: 'Try again', exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(actions, 1);
+    assert.deepEqual(unexpected, []);
+  } finally { await page.close(); }
 });
