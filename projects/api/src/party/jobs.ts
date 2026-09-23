@@ -14,6 +14,19 @@ import {
   type SongRequest,
 } from './rooms';
 import { hostLock, rows, transaction } from './store';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('party-jobs');
+
+function logProviderFailure(error: unknown, operation: string, outcome?: string): void {
+  log.warn('Party provider operation failed', {
+    operation, outcome, code: errorCode(error),
+    status: error instanceof SpotifyError || error instanceof CatalogError ? error.status : undefined,
+    phase: error instanceof SpotifyError ? error.diagnostics.phase : undefined,
+    transportCode: error instanceof SpotifyError ? error.diagnostics.transportCode : undefined,
+    unknownDelivery: error instanceof SpotifyError ? error.unknownDelivery : undefined,
+  });
+}
 
 export interface Job {
   id: string;
@@ -280,6 +293,7 @@ async function deliver(
     await spotify().enqueue(token, request.selected.id);
   } catch (error) {
     const outcome = deliveryOutcome(error);
+    logProviderFailure(error, 'enqueue', outcome);
     await transaction(async (tx) => {
       const [recorded] = await rows(
         `UPDATE party_delivery_attempts SET outcome=$2,updated_at=now()
@@ -377,7 +391,11 @@ export async function runJob(id: string, generation: number): Promise<void> {
         [room.id],
         client
       );
-      if (sending) throw error;
+      if (sending) {
+        logProviderFailure(error, 'delivery_persistence');
+        throw error;
+      }
+      logProviderFailure(error, job.kind === 'resolve' ? 'resolve' : 'delivery_preflight');
       const code = errorCode(error);
       if (error instanceof PartyError && error.status === 410)
         return done(client, job);
@@ -400,6 +418,12 @@ export async function runJob(id: string, generation: number): Promise<void> {
         } else if (code === 'track_unavailable') {
           await tx.query(
             "UPDATE party_requests SET status='unavailable',failure_code=$2 WHERE id=$1",
+            [request.id, code]
+          );
+          await done(tx, job);
+        } else if (code === 'catalog_insufficient_scope' || code === 'catalog_forbidden') {
+          await tx.query(
+            "UPDATE party_requests SET status='failed',failure_code=$2 WHERE id=$1",
             [request.id, code]
           );
           await done(tx, job);

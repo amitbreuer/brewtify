@@ -125,7 +125,11 @@ export const partyErrorHandler: ErrorRequestHandler = (
     /^[A-Z0-9]{5}$/.test(String(error.code))
       ? String(error.code)
       : undefined;
-  log.warn('Party operation failed', { code, status, storageCode });
+  log.warn('Party operation failed', {
+    code, status, storageCode,
+    phase: error instanceof SpotifyError ? error.diagnostics.phase : undefined,
+    transportCode: error instanceof SpotifyError ? error.diagnostics.transportCode : undefined,
+  });
   res
     .status(status)
     .json({
@@ -194,13 +198,7 @@ function who(res: express.Response): MiniSession {
 partyRoutes.get('/session', async (_req, res) => {
   res.json(await summary(who(res)));
 });
-partyRoutes.post('/auth/start', async (req, res) => {
-  if (req.body?.premiumConfirmed !== true)
-    throw new PartyError(
-      400,
-      'premium_confirmation_required',
-      'A Spotify Premium host is required. No test song will be queued.'
-    );
+partyRoutes.post('/auth/start', async (_req, res) => {
   await throttle(`auth:${who(res).principal}`, 5, 300);
   res.json({ authorizationUrl: await startAuthorization(who(res)) });
 });

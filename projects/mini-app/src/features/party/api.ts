@@ -73,7 +73,7 @@ export function errorText(error: unknown): string {
   }
   if (error instanceof PartyError && (
     ['host_reconnect', 'unauthorized', 'premium_required', 'insufficient_scope', 'device_unavailable', 'delivery_settling'].includes(error.code)
-    || error.code.startsWith('itunes_')
+    || error.code.startsWith('itunes_') || error.code.startsWith('catalog_')
   )) {
     return partyFailureMessage(error.code);
   }

@@ -167,7 +167,8 @@ test('deadline aborts a stalled queue request as unknown without repeating it', 
   }));
   const pending = client().enqueue('token', ID, 'speaker');
   const assertion = assert.rejects(pending, (error: unknown) =>
-    error instanceof SpotifyError && error.code === 'network' && error.unknownDelivery);
+    error instanceof SpotifyError && error.code === 'network' && error.unknownDelivery
+      && error.diagnostics.phase === 'request' && error.diagnostics.transportCode === 'deadline_exceeded');
   t.mock.timers.tick(PROVIDER_DEADLINE_MS);
   await assertion;
 });
@@ -252,7 +253,7 @@ test('minimal profile, devices, bounded search, market/relinking evidence preser
   t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = new URL(String(input));
     assert.equal(url.searchParams.get('market'),
-      url.pathname.endsWith('/search') || url.pathname.includes('/tracks/') ? 'from_token' : null);
+      url.pathname.includes('/tracks/') ? 'from_token' : null);
     assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer token');
     if (url.pathname.endsWith('/search')) assert.equal(url.searchParams.get('limit'), '10');
     return json(responses.shift());
@@ -266,7 +267,7 @@ test('minimal profile, devices, bounded search, market/relinking evidence preser
   assert.equal((await client().search('token', 'isrc:USABC1234567')).length, 1);
 });
 
-test('search and direct metadata request host-market playability rather than infer it', async t => {
+test('search avoids from_token scope rejection while direct metadata retains host-market evidence', async t => {
   for (const recording of [
     { ...track(), name: 'Tron', artists: [{ name: 'Foals' }], album: { name: 'Antidotes' },
       duration_ms: 290840, external_ids: { isrc: 'GBVKZ0725315' } },
@@ -277,7 +278,9 @@ test('search and direct metadata request host-market playability rather than inf
     const mocked = t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
       const url = new URL(String(input));
       calls.push(url);
-      if (url.pathname.endsWith('/search')) return json({ tracks: { items: [recording] } });
+      if (url.pathname.endsWith('/search')) return url.searchParams.has('market')
+        ? json({ error: { message: 'Insufficient client scope' } }, 403)
+        : json({ tracks: { items: [recording] } });
       // Without market, track metadata omits the positive playability evidence.
       return json({ ...recording, is_playable: url.searchParams.has('market') ? true : undefined });
     });
@@ -290,9 +293,59 @@ test('search and direct metadata request host-market playability rather than inf
       url: `https://open.spotify.com/track/${found.id}`, evidence: ['playable'],
     }));
     assert.equal(calls.length, 2);
-    for (const url of calls) assert.equal(url.searchParams.get('market'), 'from_token');
+    assert.equal(calls[0].searchParams.has('market'), false);
+    assert.equal(calls[1].searchParams.get('market'), 'from_token');
     mocked.mock.restore();
   }
+});
+
+test('catalog permission errors stay distinct from playback and Premium errors', async t => {
+  for (const [body, catalogCode, playbackCode] of [
+    [{ error: { message: 'Insufficient client scope' } }, 'catalog_insufficient_scope', 'insufficient_scope'],
+    [{ error: { message: 'App not allowed' } }, 'catalog_forbidden', 'forbidden'],
+    [{ error: { reason: 'PREMIUM_REQUIRED' } }, 'premium_required', 'premium_required'],
+  ] as const) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => json(body, 403));
+    await assert.rejects(client().search('token', 'Tron'), { code: catalogCode, status: 403 });
+    await assert.rejects(client().track('token', ID), { code: catalogCode, status: 403 });
+    await assert.rejects(client().enqueue('token', ID), { code: playbackCode, status: 403, unknownDelivery: false });
+    mocked.mock.restore();
+  }
+});
+
+test('queue diagnostics distinguish phases without exposing response bodies or transport messages', async t => {
+  const cases = [
+    { response: () => new Response('not-json'), phase: 'response_decode', status: 200 },
+    { response: () => new Response(null, { status: 202 }), phase: 'response_status', status: 202 },
+    { response: () => new Response('large', { headers: { 'Content-Length': String(PROVIDER_BODY_LIMIT + 1) } }), phase: 'response_headers', status: 200 },
+    { response: () => new Response(new ReadableStream({ start(c) { c.error(new Error('private response body')); } })), phase: 'response_body', status: 200 },
+    { response: () => { throw new TypeError('private token URL', { cause: Object.assign(new Error('private hostname'), { code: 'ECONNRESET' }) }); }, phase: 'request', status: undefined, transportCode: 'ECONNRESET' },
+    { response: () => { throw Object.assign(new Error('private message'), { code: 'PRIVATE_SECRET' }); }, phase: 'request', status: undefined },
+  ];
+  for (const fixture of cases) {
+    let calls = 0;
+    const mocked = t.mock.method(globalThis, 'fetch', async () => { calls++; return fixture.response(); });
+    await assert.rejects(client().enqueue('token', ID), error => {
+      assert.ok(error instanceof SpotifyError);
+      assert.equal(error.unknownDelivery, true);
+      assert.equal(error.status, fixture.status);
+      assert.equal(error.diagnostics.phase, fixture.phase);
+      assert.equal(error.diagnostics.transportCode, fixture.transportCode);
+      assert.doesNotMatch(JSON.stringify(error), /private|PRIVATE_SECRET/);
+      return true;
+    });
+    assert.equal(calls, 1);
+    mocked.mock.restore();
+  }
+});
+
+test('local enqueue validation is definitely unsent, including invalid token headers', async t => {
+  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not send'); });
+  for (const token of ['', 'bad\r\ntoken']) {
+    await assert.rejects(client().enqueue(token, ID), error =>
+      error instanceof SpotifyError && !error.unknownDelivery && error.diagnostics.phase === 'preflight');
+  }
+  assert.equal(fetch.mock.callCount(), 0);
 });
 
 test('host-market responses still reject unknown, restricted, local and relinked tracks', async t => {

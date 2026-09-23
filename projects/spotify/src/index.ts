@@ -65,6 +65,7 @@ export type SpotifyErrorCode =
   | 'configuration' | 'invalid_input' | 'network' | 'provider_unavailable'
   | 'rate_limited' | 'unauthorized' | 'invalid_grant' | 'forbidden'
   | 'premium_required' | 'insufficient_scope' | 'device_unavailable'
+  | 'catalog_insufficient_scope' | 'catalog_forbidden'
   | 'not_found' | 'redirect_rejected' | 'invalid_response' | 'provider_rejected'
   | 'track_unavailable' | 'recording_changed';
 
@@ -74,10 +75,16 @@ export class SpotifyError extends Error {
     public readonly status?: number,
     public readonly retryAfterSeconds?: number,
     public readonly unknownDelivery = false,
+    public readonly diagnostics: ProviderFailureDiagnostics = { phase: 'preflight' },
   ) {
     super(`Spotify request failed: ${code}`);
     this.name = 'SpotifyError';
   }
+}
+
+export interface ProviderFailureDiagnostics {
+  phase: 'preflight' | 'request' | 'response_headers' | 'response_body' | 'response_decode' | 'response_status';
+  transportCode?: string;
 }
 
 const BASES = {
@@ -90,9 +97,23 @@ export class ProviderTransportError extends Error {
   constructor(
     public readonly code: 'network' | 'redirect_rejected' | 'invalid_response',
     public readonly status?: number,
+    public readonly diagnostics: ProviderFailureDiagnostics = { phase: 'preflight' },
   ) {
     super(`Provider transport failed: ${code}`);
   }
+}
+
+function transportCode(error: unknown, aborted: boolean): string | undefined {
+  if (aborted) return 'deadline_exceeded';
+  const allowed = new Set([
+    'EACCES', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT',
+    'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+    'UND_ERR_SOCKET', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  ]);
+  for (let depth = 0; depth < 3 && error instanceof Error; depth++, error = error.cause) {
+    if ('code' in error && typeof error.code === 'string' && allowed.has(error.code)) return error.code;
+  }
+  return undefined;
 }
 
 export interface ProviderResponse {
@@ -129,23 +150,26 @@ export async function providerRequest(
   const timer = setTimeout(() => controller.abort(), PROVIDER_DEADLINE_MS);
   let status: number | undefined;
   let retryAfterSeconds: number | undefined;
+  let phase: ProviderFailureDiagnostics['phase'] = 'request';
   try {
     const options: RequestInit & { dispatcher: typeof providerDispatcher } = {
       ...init, dispatcher: providerDispatcher, redirect: 'manual', signal: controller.signal,
     };
     const response = await fetch(url, options);
     status = response.status;
+    phase = 'response_headers';
     if (status >= 300 && status < 400) {
       await response.body?.cancel();
-      throw new ProviderTransportError('redirect_rejected', status);
+      throw new ProviderTransportError('redirect_rejected', status, { phase });
     }
     retryAfterSeconds = retryAfter(response.headers.get('retry-after'));
     if (status === 204) return { status, body: undefined, retryAfterSeconds };
     const declaredSize = Number(response.headers.get('content-length'));
     if (declaredSize > PROVIDER_BODY_LIMIT) {
       await response.body?.cancel();
-      throw new ProviderTransportError('invalid_response', status);
+      throw new ProviderTransportError('invalid_response', status, { phase });
     }
+    phase = 'response_body';
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -157,7 +181,7 @@ export async function providerRequest(
           size += value.byteLength;
           if (size > PROVIDER_BODY_LIMIT) {
             await reader.cancel();
-            throw new ProviderTransportError('invalid_response', status);
+            throw new ProviderTransportError('invalid_response', status, { phase });
           }
           chunks.push(value);
         }
@@ -166,13 +190,14 @@ export async function providerRequest(
       }
     }
     const text = Buffer.concat(chunks).toString('utf8');
+    phase = 'response_decode';
     let body: unknown;
     try {
       body = text ? JSON.parse(text) : undefined;
     } catch {
       // A definite rejection (notably 429) remains definite even without JSON.
       if (status >= 400) return { status, body: undefined, retryAfterSeconds };
-      throw new ProviderTransportError('invalid_response', status);
+      throw new ProviderTransportError('invalid_response', status, { phase });
     }
     return { status, body, retryAfterSeconds };
   } catch (error) {
@@ -182,7 +207,9 @@ export async function providerRequest(
       return { status, body: undefined, retryAfterSeconds };
     }
     if (error instanceof ProviderTransportError) throw error;
-    throw new ProviderTransportError('network', status);
+    throw new ProviderTransportError('network', status, {
+      phase, transportCode: transportCode(error, controller.signal.aborted),
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -350,7 +377,8 @@ export class SpotifyClient {
 
   async search(token: string, query: string): Promise<SpotifyTrack[]> {
     if (!query || query.length > 1000) throw new SpotifyError('invalid_input');
-    const params = new URLSearchParams({ q: query, type: 'track', limit: '10', market: HOST_MARKET });
+    // Search uses the user token's country; from_token causes scope errors here.
+    const params = new URLSearchParams({ q: query, type: 'track', limit: '10' });
     const items = object(object(await this.read(`search?${params}`, token)).tracks).items;
     if (!Array.isArray(items) || items.length > 10) throw new SpotifyError('invalid_response');
     return items.map(decodeTrack);
@@ -383,33 +411,38 @@ export class SpotifyClient {
       response = await providerRequest(service, path, init);
     } catch (error) {
       if (error instanceof ProviderTransportError) {
-        throw new SpotifyError(error.code, error.status, undefined, write);
+        throw new SpotifyError(error.code, error.status, undefined,
+          write && error.diagnostics.phase !== 'preflight', error.diagnostics);
       }
       throw error;
     }
     const { status, body, retryAfterSeconds } = response;
+    const failure = (code: SpotifyErrorCode, unknownDelivery = false, retry?: number) =>
+      new SpotifyError(code, status, retry, unknownDelivery, { phase: 'response_status' });
     if (write && status === 204) return undefined;
     if (status >= 200 && status < 300) {
-      if (write) throw new SpotifyError('invalid_response', status, undefined, true);
-      if (body === undefined) throw new SpotifyError('invalid_response', status);
+      if (write) throw failure('invalid_response', true);
+      if (body === undefined) throw failure('invalid_response');
       return body;
     }
-    if (status === 429) throw new SpotifyError('rate_limited', status, retryAfterSeconds ?? 60);
-    if (status >= 500) throw new SpotifyError('provider_unavailable', status, undefined, write);
-    if (status === 401) throw new SpotifyError('unauthorized', status);
+    if (status === 429) throw failure('rate_limited', false, retryAfterSeconds ?? 60);
+    if (status >= 500) throw failure('provider_unavailable', write);
+    if (status === 401) throw failure('unauthorized');
     const error = object(body).error;
-    if (error === 'invalid_grant') throw new SpotifyError('invalid_grant', status);
+    if (error === 'invalid_grant') throw failure('invalid_grant');
     const detail = object(error);
     const reason = typeof detail.reason === 'string' ? detail.reason : '';
     const message = typeof detail.message === 'string' ? detail.message.toLowerCase() : '';
     if (status === 403) {
+      const catalog = service === 'spotify' && (path.startsWith('search?') || path.startsWith('tracks/'));
       const code = reason === 'PREMIUM_REQUIRED' || message === 'premium required'
         ? 'premium_required'
         : reason === 'INSUFFICIENT_SCOPE' || message === 'insufficient client scope'
-          ? 'insufficient_scope' : 'forbidden';
-      throw new SpotifyError(code, status);
+          ? catalog ? 'catalog_insufficient_scope' : 'insufficient_scope'
+          : catalog ? 'catalog_forbidden' : 'forbidden';
+      throw failure(code);
     }
-    if (status === 404) throw new SpotifyError(write ? 'device_unavailable' : 'not_found', status);
-    throw new SpotifyError('provider_rejected', status);
+    if (status === 404) throw failure(write ? 'device_unavailable' : 'not_found');
+    throw failure('provider_rejected');
   }
 }
