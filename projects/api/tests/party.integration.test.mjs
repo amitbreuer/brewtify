@@ -1309,3 +1309,61 @@ test('selected search result reaches one mocked 204 with host-market revalidatio
   assert.ok(metadataMarkets.every(market => market === 'from_token'));
   await call(`${route}/action`, host, { action: 'close' });
 });
+
+test('direct Spotify links including localized share URLs search, select and deliver with host-market metadata', async t => {
+  await store.rows('DELETE FROM party_throttles');
+  await authorize(host);
+  const { room: active } = await makeRoom(host);
+  const route = `/rooms/${active.id}`;
+  const originalFetch = globalThis.fetch;
+  t.mock.method(SpotifyClient.prototype, 'track', spotifyTrack);
+  t.mock.method(SpotifyClient.prototype, 'enqueue', spotifyEnqueue);
+  let reads = 0;
+  let sends = 0;
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(String(input));
+    if (url.origin === base) return originalFetch(input, options);
+    assert.equal(url.origin, 'https://api.spotify.com', 'direct Spotify links need no other catalog');
+    if (url.pathname === `/v1/tracks/${trackId}`) {
+      reads++;
+      assert.equal(url.searchParams.get('market'), 'from_token');
+      return Response.json(track);
+    }
+    assert.equal(url.pathname, '/v1/me/player/queue');
+    assert.equal(options.method, 'POST');
+    assert.equal(url.searchParams.get('uri'), `spotify:track:${trackId}`);
+    assert.equal(url.searchParams.has('device_id'), false);
+    sends++;
+    return new Response(null, { status: 204 });
+  });
+  const canonical = `https://open.spotify.com/track/${trackId}`;
+  for (const [index, url] of [
+    canonical,
+    `${canonical}?si=share&context=spotify%3Aalbum%3Atest`,
+    `https://open.spotify.com/intl-de/track/${trackId}?si=share`,
+    `https://open.spotify.com/intl-pt-BR/track/${trackId}/?si=share`,
+  ].entries()) {
+    const found = await call(`${route}/search`, host, { url });
+    assert.equal(found.response.status, 200, JSON.stringify(found.data));
+    assert.equal(found.data.candidates.length, 1);
+    const candidate = found.data.candidates[0];
+    assert.equal(candidate.id, trackId);
+    assert.equal(candidate.url, canonical);
+    assert.ok(candidate.evidence.includes('direct_spotify_id'));
+    assert.equal(sends, index, 'finding a direct link never enqueues it');
+    const selected = await call(`${route}/selections`, host, { selectionToken: candidate.selectionToken });
+    assert.equal(selected.response.status, 202, JSON.stringify(selected.data));
+    assert.equal((await call(`${route}/selections`, host, { selectionToken: candidate.selectionToken })).data.id, selected.data.id);
+    const [saved] = await store.rows('SELECT source_url,status FROM party_requests WHERE id=$1', [selected.data.id]);
+    assert.equal(saved.source_url, canonical);
+    assert.equal(saved.status, 'approved');
+    await runPending(selected.data.id, 'deliver');
+    await runPending(selected.data.id, 'deliver');
+    assert.equal(sends, index + 1);
+    assert.equal(reads, (index + 1) * 2, 'search and pre-send both use direct track metadata');
+    const [receipt] = await store.rows('SELECT status,failure_code FROM party_requests WHERE id=$1', [selected.data.id]);
+    assert.deepEqual(receipt, { status: 'added', failure_code: null });
+    assert.deepEqual(await store.rows('SELECT outcome FROM party_delivery_attempts WHERE request_id=$1', [selected.data.id]), [{ outcome: 'accepted' }]);
+  }
+  await call(`${route}/action`, host, { action: 'close' });
+});
