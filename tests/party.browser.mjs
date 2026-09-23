@@ -33,7 +33,28 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   await page.goto(`${base}/app/?section=party&demo=host`);
   await page.getByText('INTERACTIVE PREVIEW', { exact: true }).waitFor();
   const afterglow = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Afterglow', exact: true }) });
-  await afterglow.getByText('Added to host’s Spotify queue', { exact: true }).waitFor();
+  await afterglow.waitFor();
+  assert.equal(await afterglow.getByRole('heading').evaluate(element => getComputedStyle(element).color), 'rgb(255, 255, 255)');
+  assert.deepEqual((await afterglow.innerText()).split('\n').filter(Boolean), ['Afterglow', 'Northern Lines · Blue Hour']);
+  assert.equal(await page.getByRole('article').getByRole('link').count(), 0);
+  assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: 'Your party', exact: true }).count(), 0);
+  assert.equal(await page.getByText('Song links only. No music account needed.', { exact: true }).count(), 0);
+  const endParty = page.getByRole('button', { name: 'End party', exact: true });
+  assert.equal(await endParty.innerText(), '');
+  const endSize = await endParty.boundingBox();
+  assert.equal(endSize.width, 44);
+  assert.equal(endSize.height, 44);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    const rowSize = await afterglow.boundingBox();
+    assert.ok(rowSize.height <= 80, `Song row is too tall: ${rowSize.height}`);
+    const artworkSize = await afterglow.locator('img').boundingBox();
+    assert.equal(artworkSize.width, 48);
+    assert.equal(artworkSize.height, 48);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.getByRole('button', { name: /Approve|Reject|Lock requests|Disconnect Party Spotify|Confirm playback device/ }).count(), 0);
   assert.equal(await page.getByLabel('Moderation mode', { exact: true }).count(), 0);
   assert.equal(await page.getByLabel('Display name', { exact: true }).count(), 0);
@@ -48,7 +69,15 @@ test('interactive demo renders host, guest and setup with no API traffic', async
   await page.getByRole('button', { name: 'Host setup', exact: true }).click();
   await page.getByLabel('Active Spotify device', { exact: true }).selectOption('living-room');
   await page.getByRole('button', { name: 'Create demo party', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your party', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'End party', exact: true }).waitFor();
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'End party', exact: true }).click();
+  assert.equal(await page.getByRole('heading', { name: 'Add a song', exact: true }).count(), 1);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'End party', exact: true }).click();
+  await page.getByText('Party ended.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'End party', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Add song', exact: true }).count(), 0);
   assert.equal(requests.some(url => new URL(url).pathname.startsWith('/api/')), false);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   assert.deepEqual(errors, []);

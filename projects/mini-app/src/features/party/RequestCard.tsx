@@ -30,20 +30,22 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
   const unknown = request.failureCode === 'delivery_unknown';
   const reviewable = ['matched', 'needs_review'].includes(request.status);
   return (
-    <article className="party-card party-stack">
+    <article className={`party-card party-stack${isHost ? ' party-song-row' : ''}`}>
       <div className="party-track">
-        {track?.artwork && <img src={track.artwork} alt="" loading="lazy" referrerPolicy="no-referrer" />}
+        {track?.artwork ? <img src={track.artwork} alt="" loading="lazy" referrerPolicy="no-referrer" /> : isHost && <span className="party-artwork-placeholder" aria-hidden="true" />}
         <div>
-          <h3>{track?.title ?? 'Finding your song…'}</h3>
-          {track && <p>{track.artist} · {track.album}</p>}
-          {request.source && request.selected && <p className="party-muted">Original: {request.source.title} — {request.source.artist}</p>}
-          <a href={request.sourceUrl} target="_blank" rel="noopener noreferrer">Original on {sourceProvider}</a>
-          {request.selected && <> · <a href={request.selected.url} target="_blank" rel="noopener noreferrer">Listen on Spotify</a></>}
+          <h3 title={track?.title}>{track?.title ?? 'Finding your song…'}</h3>
+          {track && <p title={`${track.artist} · ${track.album}`}>{track.artist} · {track.album}</p>}
+          {(!isHost || reviewable) && request.source && request.selected && <p className="party-muted">Original: {request.source.title} — {request.source.artist}</p>}
+          {!isHost && <>
+            <a href={request.sourceUrl} target="_blank" rel="noopener noreferrer">Original on {sourceProvider}</a>
+            {request.selected && <> · <a href={request.selected.url} target="_blank" rel="noopener noreferrer">Listen on Spotify</a></>}
+          </>}
         </div>
       </div>
-      <p className={unknown ? 'party-warning' : 'party-status'}>{unknown ? 'Outcome unknown · this song may already be in the Spotify queue' : statusText[request.status]}</p>
+      {(!isHost || request.status !== 'added' || unknown) && <p className={unknown ? 'party-warning' : 'party-status'}>{unknown ? 'Outcome unknown · this song may already be in the Spotify queue' : statusText[request.status]}</p>}
       {request.failureCode && !unknown && <p className="party-muted">{partyFailureMessage(request.failureCode)}</p>}
-      {isHost && actionable && (
+      {isHost && actionable && (reviewable || request.status === 'failed') && (
         <>
           {reviewable && request.candidates.length > 0 && (
             <details open={request.status === 'needs_review'}>
@@ -51,7 +53,7 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
               <ul className="party-candidates">
                 {request.candidates.map((candidate) => (
                   <li key={candidate.id} className="party-stack">
-                    <a href={candidate.url} target="_blank" rel="noopener noreferrer">{candidate.title} — {candidate.artist} · Spotify</a>
+                    <p>{candidate.title} — {candidate.artist}</p>
                     <p className="party-muted">{candidate.album} · {formatDuration(candidate.durationMs)} · {candidate.explicit === null ? 'Explicitness unknown' : candidate.explicit ? 'Explicit' : 'Not explicit'}</p>
                     <p className="party-muted">{candidate.evidence.join(' · ')}</p>
                     <button disabled={busy} className="party-secondary" onClick={() => onAction(request.id, 'select', candidate.id)}>Choose this version</button>

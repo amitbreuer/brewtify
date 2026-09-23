@@ -27,10 +27,11 @@ export default function PartyPreview() {
   }
 
   return (
+    <div className="app-shell">
     <main className="party-page party-stack" style={{ paddingBottom: 48 }}>
       <aside className="party-card party-stack" style={{ borderColor: '#a87932', background: '#302518' }} aria-label="Demo controls">
         <div className="party-heading"><strong>INTERACTIVE PREVIEW</strong><span className="party-badge">Sample data</span></div>
-        <p>No Telegram login, provider requests, or real playback. Changes stay in this browser tab. The QR invitation is a placeholder.</p>
+        {view !== 'host' && <p>No Telegram login, provider requests, or real playback. Changes stay in this browser tab. The QR invitation is a placeholder.</p>}
         <nav className="party-actions" aria-label="Preview screens">
           <button className={view === 'host' ? undefined : 'party-secondary'} aria-pressed={view === 'host'} onClick={() => show('host')}>Host view</button>
           <button className={view === 'guest' ? undefined : 'party-secondary'} aria-pressed={view === 'guest'} onClick={() => show('guest')}>Guest view</button>
@@ -38,7 +39,7 @@ export default function PartyPreview() {
           <button className="party-secondary" onClick={() => setReset(value => value + 1)}>Reset samples</button>
         </nav>
       </aside>
-      <header className="party-heading"><h1>Party</h1><span className="party-muted">{view === 'guest' ? 'Guest experience' : 'Host experience'}</span></header>
+      {view !== 'host' && <header className="party-heading"><h1>Party</h1><span className="party-muted">{view === 'guest' ? 'Guest experience' : 'Host experience'}</span></header>}
       {view === 'setup' ? (
         <section className="party-card party-stack">
           <h2>Host setup</h2>
@@ -48,7 +49,8 @@ export default function PartyPreview() {
           <button disabled={device !== 'living-room'} onClick={() => show('host')}>Create demo party</button>
         </section>
       ) : <DemoRoom key={`${view}-${reset}`} isHost={view === 'host'} onSetup={() => show('setup')} />}
-      <footer className="party-muted">Sample songs only. This preview never connects to Spotify or plays music.</footer>
+      {view !== 'host' && <footer className="party-muted">Sample songs only. This preview never connects to Spotify or plays music.</footer>}
     </main>
+    </div>
   );
 }

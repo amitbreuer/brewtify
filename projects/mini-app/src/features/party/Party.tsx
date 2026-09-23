@@ -175,7 +175,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
 
   return (
     <main className="party-page party-stack">
-      <header className="party-heading"><h1>Party</h1>{view !== 'landing' && view !== 'loading' && <button className="party-secondary" onClick={back}>Back</button>}</header>
+      {!(view === 'room' && session?.room?.isHost) && <header className="party-heading"><h1>Party</h1>{view !== 'landing' && view !== 'loading' && <button className="party-secondary" onClick={back}>Back</button>}</header>}
       {error && <div className="party-error" role="alert">{error}</div>}
       {view === 'loading' && <p role="status">Verifying your Telegram session…</p>}
       {view !== 'loading' && !session && <button disabled={busy} onClick={() => { setError(''); setView('loading'); setBootKey((key) => key + 1); }}>Retry Telegram session</button>}
@@ -232,7 +232,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
           onReconnect={() => { setAuthStatus('idle'); setView('setup'); setSession((current) => current && { ...current, hostConnected: false }); }}
         />
       )}
-      <footer className="party-muted">Songs go to Spotify’s queue, not a playlist. Leaving this tab does not end the party.</footer>
+      {!(view === 'room' && session?.room?.isHost) && <footer className="party-muted">Songs go to Spotify’s queue, not a playlist. Leaving this tab does not end the party.</footer>}
     </main>
   );
 }
