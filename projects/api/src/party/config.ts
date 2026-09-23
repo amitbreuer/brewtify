@@ -68,7 +68,6 @@ export function checkPrerequisites(): void {
     'PARTY_IDENTITY_KEY',
     'SPOTIFY_CLIENT_ID',
     'PARTY_SPOTIFY_REDIRECT_URI',
-    'PARTY_HOST_ALLOWLIST',
     'PARTY_TASKS_PROJECT',
     'PARTY_TASKS_LOCATION',
     'PARTY_TASKS_QUEUE',

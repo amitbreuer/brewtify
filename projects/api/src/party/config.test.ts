@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkPrerequisites, PartyError } from './config';
 
-test('Party prerequisites require no Apple credentials but retain Spotify and infrastructure gates', t => {
+test('Party prerequisites require no host list or Apple credentials but retain Spotify and infrastructure gates', t => {
   const values: Record<string, string | undefined> = {
     PARTY_PUBLIC_ORIGIN: 'https://party.test',
     PARTY_TELEGRAM_BOT_USERNAME: 'test_party_bot',
@@ -12,7 +12,6 @@ test('Party prerequisites require no Apple credentials but retain Spotify and in
     PARTY_IDENTITY_KEY: 'cd'.repeat(32),
     SPOTIFY_CLIENT_ID: 'test-client',
     PARTY_SPOTIFY_REDIRECT_URI: 'https://party.test/api/party/auth/callback',
-    PARTY_HOST_ALLOWLIST: 'host',
     PARTY_TASKS_PROJECT: 'test',
     PARTY_TASKS_LOCATION: 'test',
     PARTY_TASKS_QUEUE: 'test',
@@ -32,7 +31,7 @@ test('Party prerequisites require no Apple credentials but retain Spotify and in
     });
   }
   assert.doesNotThrow(checkPrerequisites);
-  for (const name of ['SPOTIFY_CLIENT_ID', 'PARTY_HOST_ALLOWLIST', 'PARTY_TASKS_QUEUE', 'PARTY_IDENTITY_KEY']) {
+  for (const name of ['SPOTIFY_CLIENT_ID', 'PARTY_TASKS_QUEUE', 'PARTY_IDENTITY_KEY']) {
     delete process.env[name];
     assert.throws(checkPrerequisites, (error: unknown) =>
       error instanceof PartyError && error.code === 'configuration_required' && error.message.includes(name));

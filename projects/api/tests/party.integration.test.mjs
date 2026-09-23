@@ -22,7 +22,6 @@ Object.assign(process.env, {
   TELEGRAM_BOT_TOKEN: '123456:test',
   SPOTIFY_CLIENT_ID: 'test-client',
   PARTY_SPOTIFY_REDIRECT_URI: `${origin}/api/party/auth/callback`,
-  PARTY_HOST_ALLOWLIST: 'test-spotify',
   PARTY_TASKS_PROJECT: 'test',
   PARTY_TASKS_LOCATION: 'test',
   PARTY_TASKS_QUEUE: 'test',
@@ -105,7 +104,7 @@ before(async () => {
     { env: process.env }
   );
   mock.method(SpotifyClient.prototype, 'profile', async () => ({
-    id: 'test-spotify',
+    id: 'previously-unlisted-spotify',
   }));
   mock.method(SpotifyClient.prototype, 'exchange', async () => tokens);
   mock.method(SpotifyClient.prototype, 'refresh', async () => ({
@@ -351,8 +350,37 @@ test('OAuth browser state mismatch, cancellation, expiration and one-use tickets
     400
   );
 });
-test('external browser PKCE returns to verified principal without shared cookies; callback replay denied', async () => {
+test('OAuth still rejects missing playback permission and refresh credentials', async () => {
+  for (const [response, expected] of [
+    [{ ...tokens, scopes: [] }, 'insufficient_scope'],
+    [{ ...tokens, refreshToken: undefined }, 'provider_response'],
+  ]) {
+    SpotifyClient.prototype.exchange.mock.mockImplementationOnce(async () => response);
+    const start = await call('/auth/start', outsider, { premiumConfirmed: true });
+    assert.equal(start.response.status, 200);
+    const link = new URL(start.data.authorizationUrl);
+    const launched = await call(`${link.pathname.replace('/api/party', '')}${link.search}`);
+    assert.equal(launched.response.status, 302);
+    const state = new URL(launched.response.headers.get('location')).searchParams.get('state');
+    const browserCookie = launched.response.headers.get('set-cookie').split(';')[0];
+    const finish = await call(`/auth/callback?state=${state}&code=test`, null, undefined, {
+      Cookie: browserCookie,
+    });
+    assert.equal(finish.data.error.code, expected);
+    assert.equal((await call('/auth/status', outsider)).data.status, 'failed');
+    assert.equal((await call('/session', outsider)).data.hostConnected, false);
+    assert.equal((await store.rows('SELECT * FROM party_host_sessions')).length, 0);
+  }
+});
+test('previously unlisted Spotify account completes browser PKCE and host setup without a host list; callback replay denied', async () => {
   const { state, browserCookie } = await authorize(host);
+  const { identity } = require('../dist/party/security.js');
+  const [stored] = await store.rows('SELECT * FROM party_host_sessions');
+  assert.equal(stored.account_key, identity('spotify:previously-unlisted-spotify'));
+  assert.deepEqual(stored.scopes, scopes);
+  assert.notEqual(stored.encrypted_access_token, tokens.accessToken);
+  assert.notEqual(stored.encrypted_refresh_token, tokens.refreshToken);
+  assert.equal((await call('/session', host)).data.hostConnected, true);
   assert.equal((await call('/auth/status', outsider)).data.status, 'failed');
   assert.equal((await call('/session', outsider)).data.hostConnected, false);
   assert.equal(
@@ -365,6 +393,7 @@ test('external browser PKCE returns to verified principal without shared cookies
   );
   assert.equal(queueCalls, 0, 'setup must not enqueue a Premium probe');
   ({ room, inviteUrl: invitation } = await makeRoom(host));
+  assert.ok(new Date(room.expiresAt).getTime() <= Date.now() + 12 * 3600_000);
   assert.equal(
     (await call('/rooms', host, {})).data.room.id,
     room.id,
