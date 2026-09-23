@@ -35,6 +35,22 @@ closure/expiry or a terminal authorization/membership error. QR invitations
 are generated locally with `qrcode`, not through a third-party service.
 Guest receipt visibility and all host permissions are enforced by the API.
 
+Host and guest song inputs search complete links after a 500 ms debounce.
+Apple Music links resolve through exact-ID/storefront iTunes lookup and then
+Spotify search; Spotify links resolve directly. Search never queues a song.
+Clicking a result card is the only confirmation and creates a durable addition,
+without another Add button, modal or routine host approval. `SongCard` supplies
+identical artwork, title, artist and album markup for results and list rows.
+Results expire after at most five minutes; edits and navigation invalidate old
+responses. An empty completed current search shows **Not found** once, while
+provider/auth/rate-limit failures remain errors with explicit retry.
+
+The existing toast provider shows **Added to the queue** only for a selected
+request whose polled status confirms Spotify accepted it, never for search or
+the initial 202 response. Pending requests show progress; unknown outcomes
+retain their warning and host recovery safeguards. Old/other users' receipts
+and reloads never replay success toasts.
+
 Validation:
 
 ```sh
@@ -49,6 +65,10 @@ Library boundary regressions, changed-feed merging, backoff, signed bootstrap,
 cookie/CSRF requests, and non-replayed writes. Real Telegram WebView cookies,
 external OAuth return, active-playback targeting, and actual Spotify delivery still
 require an authorized integration pilot.
+`song-search.test.mjs` uses development-only JSDOM and Vite's TSX loader to test
+real React input/click/effect behavior with controlled timers, including stale
+responses and confirmed-only toasts. It requires the shared workspace build.
+This is DOM-only coverage, not a replacement for browser layout/keyboard checks.
 
 On re-entry, Party first restores `GET /api/party/session`; only a 401 triggers
 signed-launch bootstrap. Sessions last one hour, while new signed launches
@@ -152,8 +172,13 @@ With `VITE_PARTY_PREVIEW=true` on the Vite development server, open
 components with sample songs. The preview toolbar switches to Guest view and
 Start screen (`demo=start`; old `demo=setup` links also open this screen).
 The sample Start party button opens the host room directly, simulating consent
-without a device picker. Guests only paste a song link and choose Add song; the demo shows
-it added immediately with no approval or display-name form. There is no room
+without a device picker. Both hosts and guests paste a complete song link and
+click the resulting song card; no song appears in the list merely from typing.
+Queue acceptance is simulated after a short delay, rather than claiming success
+on click. The **Search / delivery sample** control exposes matching, multiple
+versions, not found, rate limited, failed, unknown and pending scenarios in both
+views. For example, paste `https://music.apple.com/us/song/123456789`.
+There is no approval or display-name form and no room
 settings panel. Start party and End party update local sample state.
 Reset samples restores the example songs.
 

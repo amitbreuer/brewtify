@@ -68,6 +68,9 @@ export class PartyClient {
 }
 
 export function errorText(error: unknown): string {
+  if (error instanceof PartyError && error.code === 'itunes_rate_limited') {
+    return `iTunes Store is limiting song lookups. Wait ${Math.max(1, Math.ceil(error.retryAfterMs / 1000))} seconds, then search again.`;
+  }
   if (error instanceof PartyError && (
     ['host_reconnect', 'unauthorized', 'premium_required', 'insufficient_scope', 'device_unavailable', 'delivery_settling'].includes(error.code)
     || error.code.startsWith('itunes_')
@@ -79,7 +82,7 @@ export function errorText(error: unknown): string {
   }
   if (error instanceof PartyError && error.status === 429) {
     const seconds = Math.max(1, Math.ceil(error.retryAfterMs / 1000));
-    return `Too many requests. Wait ${seconds} seconds before trying again. Updates will resume automatically.`;
+    return `Too many requests. Wait ${seconds} seconds before trying again.`;
   }
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 }

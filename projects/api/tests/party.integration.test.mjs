@@ -1025,3 +1025,183 @@ test('iTunes retry is durable; missing ISRC needs host choice in auto rooms; out
   assert.equal(queueCalls, before + 1);
   await call(`/rooms/${active.id}/action`, host, { action: 'close' });
 });
+
+test('read-only room search and explicit submitter selection preserve authorization, idempotency and delivery', async t => {
+  await store.rows('DELETE FROM party_throttles');
+  await authorize(host);
+  const created = await makeRoom(host);
+  const active = created.room;
+  assert.equal(active.mode, 'host_approval', 'new selections must also bypass legacy routine approval');
+  const secret = new URL(created.inviteUrl).searchParams.get('startapp').slice(2);
+  await call('/join', member, { secret });
+  const path = `/rooms/${active.id}`;
+  const url = `https://open.spotify.com/track/${trackId}`;
+  let trackCalls = 0;
+  let spotifyFailure;
+  t.mock.method(SpotifyClient.prototype, 'track', async () => {
+    trackCalls++;
+    if (spotifyFailure) throw spotifyFailure;
+    return track;
+  });
+  t.mock.method(SpotifyClient.prototype, 'enqueue', async () => { queueCalls++; });
+  const count = async table => (await store.rows(`SELECT count(*)::int AS count FROM ${table}`))[0].count;
+  const requestsBefore = await count('party_requests');
+  const jobsBefore = await count('party_jobs');
+  const queuedBefore = queueCalls;
+  assert.equal((await call(`${path}/search`, null, { url })).response.status, 401);
+  assert.equal((await call(`${path}/search`, outsider, { url })).response.status, 403);
+  assert.equal((await call(`${path}/search`, member, { url }, { 'X-Party-CSRF': 'bad' })).response.status, 403);
+  assert.equal((await call(`${path}/search`, member, { url }, { Origin: 'https://evil.test' })).response.status, 403);
+  for (const value of ['', 'https://open.spotify.com/track/partial', 'https://music.apple.com/us/album/123', 'http://localhost/']) {
+    assert.equal((await call(`${path}/search`, member, { url: value })).response.status, 400);
+  }
+  assert.equal(trackCalls, 0);
+  const found = await call(`${path}/search`, member, { url });
+  assert.equal(found.response.status, 200, JSON.stringify(found.data));
+  assert.equal(found.data.candidates.length, 1);
+  const candidate = found.data.candidates[0];
+  assert.equal(candidate.id, trackId);
+  assert.equal(await count('party_requests'), requestsBefore);
+  assert.equal(await count('party_jobs'), jobsBefore);
+  assert.equal(queueCalls, queuedBefore);
+  const selection = { selectionToken: candidate.selectionToken };
+  const [payload, signature] = candidate.selectionToken.split('.');
+  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
+  assert.equal(decoded.source.url, url);
+  assert.equal(JSON.stringify(decoded).includes('accessToken'), false);
+  const tamper = changed => `${Buffer.from(JSON.stringify({ ...decoded, ...changed })).toString('base64url')}.${signature}`;
+  for (const selectionToken of [
+    tamper({ candidate: { ...decoded.candidate, id: 'ZZZZZZZZZZZZZZZZZZZZZZ' } }),
+    tamper({ source: { ...decoded.source, url: 'https://evil.test/' } }),
+    tamper({ expires: Date.now() + 86_400_000 }),
+    `${candidate.selectionToken}.extra`,
+  ]) {
+    assert.equal((await call(`${path}/selections`, member, { selectionToken })).data.error.code, 'invalid_candidate');
+  }
+  assert.equal((await call(`${path}/selections`, host, selection)).response.status, 403);
+  assert.equal((await call(`${path}/selections`, outsider, selection)).response.status, 403);
+  assert.equal((await call('/rooms/another-room/selections', member, selection)).response.status, 403);
+  assert.equal((await call(`${path}/selections`, member, selection, { 'X-Party-CSRF': '' })).response.status, 403);
+  const anotherSession = await guest(200);
+  await call('/join', anotherSession, { secret });
+  assert.equal((await call(`${path}/selections`, anotherSession, selection)).response.status, 403, 'even same-principal sessions cannot share offers');
+  const expiredPayload = Buffer.from(JSON.stringify({ ...decoded, expires: Date.now() - 1000 })).toString('base64url');
+  const expiredSignature = createHmac('sha256', Buffer.from(process.env.PARTY_IDENTITY_KEY, 'hex'))
+    .update(`party-selection-v1:${expiredPayload}`).digest('hex');
+  assert.equal((await call(`${path}/selections`, member, { selectionToken: `${expiredPayload}.${expiredSignature}` })).data.error.code, 'search_expired');
+  await store.rows('DELETE FROM party_memberships WHERE room_id=$1 AND session_id=$2', [active.id, decoded.session]);
+  assert.equal((await call(`${path}/selections`, member, selection)).response.status, 403);
+  await call('/join', member, { secret });
+  const selected = await Promise.all([call(`${path}/selections`, member, selection), call(`${path}/selections`, member, selection)]);
+  assert.ok(selected.some(response => response.response.status === 202));
+  assert.ok(selected.every(response => response.response.status === 202 || response.data.error.code === 'host_busy'));
+  const id = selected.find(response => response.response.status === 202).data.id;
+  assert.equal((await call(`${path}/selections`, member, selection)).data.id, id);
+  assert.ok(selected.filter(response => response.response.status === 202).every(response => response.data.id === id));
+  assert.equal(await count('party_requests'), requestsBefore + 1);
+  assert.equal(await count('party_jobs'), jobsBefore + 1);
+  assert.equal(queueCalls, queuedBefore, 'outbox creation is not success');
+  const [request] = await store.rows('SELECT * FROM party_requests WHERE id=$1', [id]);
+  assert.equal(request.status, 'approved');
+  assert.equal(request.selected.id, trackId);
+  assert.equal((await store.rows('SELECT kind FROM party_jobs WHERE request_id=$1', [id]))[0].kind, 'deliver');
+  await runPending(id, 'deliver');
+  await runPending(id, 'deliver');
+  assert.equal(queueCalls, queuedBefore + 1);
+  assert.equal((await call(`${path}/requests`, member)).data.requests.find(item => item.id === id).status, 'added');
+  assert.equal((await call(`${path}/requests/${id}/action`, member, { action: 'select', candidateId: trackId })).response.status, 403, 'legacy host-only controls stay host-only');
+
+  // Missing recording identity still offers choices, but never silently chooses one.
+  const originalFetch = globalThis.fetch;
+  let itunesStatus = 200;
+  let empty = false;
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const lookup = new URL(String(input));
+    if (lookup.origin === base) return originalFetch(input, options);
+    assert.equal(lookup.toString(), 'https://itunes.apple.com/lookup?id=123456789&country=il');
+    return itunesStatus === 200 ? Response.json({
+      resultCount: empty ? 0 : 1,
+      results: empty ? [] : [{ wrapperType: 'track', kind: 'song', trackId: 123456789, trackName: track.name,
+        artistName: 'Artist', collectionName: 'Album', trackTimeMillis: track.duration_ms, trackExplicitness: 'notExplicit' }],
+    }) : new Response('', { status: itunesStatus, headers: { 'Retry-After': '75' } });
+  });
+  const alternate = { ...track, id: 'ZZZZZZZZZZZZZZZZZZZZZZ' };
+  let searchResults = [track, alternate, { ...track, id: 'YYYYYYYYYYYYYYYYYYYYYY', name: 'Test Song - Live' }];
+  t.mock.method(SpotifyClient.prototype, 'search', async () => searchResults);
+  const apple = { url: 'https://music.apple.com/il/album/album/123456788?i=123456789' };
+  const choices = await call(`${path}/search`, member, apple);
+  assert.equal(choices.response.status, 200, JSON.stringify(choices.data));
+  assert.equal(choices.data.candidates.length, 2, 'contradictory live version must remain excluded');
+  assert.equal(await count('party_requests'), requestsBefore + 1);
+  assert.equal(await count('party_jobs'), jobsBefore + 1);
+  const choice = choices.data.candidates[0];
+  const chosen = await call(`${path}/selections`, member, { selectionToken: choice.selectionToken });
+  assert.equal(chosen.response.status, 202, JSON.stringify(chosen.data));
+  assert.equal((await call(`${path}/selections`, member, { selectionToken: choices.data.candidates[1].selectionToken })).data.error.code, 'submission_conflict');
+  await runPending(chosen.data.id, 'deliver');
+  assert.equal(queueCalls, queuedBefore + 2);
+
+  await store.rows('DELETE FROM party_throttles');
+  for (const status of [429, 503]) {
+    itunesStatus = status;
+    const failure = await call(`${path}/search`, member, apple);
+    assert.equal(failure.response.status, status);
+    assert.equal(failure.data.candidates, undefined, 'provider errors are never Not found');
+    if (status === 429) assert.equal(failure.response.headers.get('retry-after'), '75');
+  }
+  itunesStatus = 200;
+  empty = true;
+  assert.deepEqual((await call(`${path}/search`, member, apple)).data.candidates, []);
+  empty = false;
+  searchResults = [];
+  assert.deepEqual((await call(`${path}/search`, member, apple)).data.candidates, []);
+  spotifyFailure = new SpotifyError('rate_limited', 429, 30);
+  const limited = await call(`${path}/search`, member, { url });
+  assert.equal(limited.response.status, 429, JSON.stringify(limited.data));
+  spotifyFailure = undefined;
+  await call(`${path}/search`, member, { url });
+  const beforeThrottled = trackCalls;
+  assert.equal((await call(`${path}/search`, member, { url })).response.status, 429);
+  assert.equal(trackCalls, beforeThrottled, 'search throttle must run before providers');
+
+  await store.rows('DELETE FROM party_throttles');
+  spotifyFailure = new SpotifyError('unauthorized', 401);
+  const unauthorized = await call(`${path}/search`, member, { url });
+  assert.equal(unauthorized.response.status, 401);
+  assert.equal(unauthorized.data.error.code, 'unauthorized');
+  assert.equal(unauthorized.data.candidates, undefined);
+  spotifyFailure = new SpotifyError('network');
+  assert.equal((await call(`${path}/search`, member, { url })).response.status, 503);
+  spotifyFailure = undefined;
+  const hostResult = await call(`${path}/search`, host, { url });
+  assert.equal(hostResult.response.status, 200);
+  await call(`${path}/action`, host, { action: 'lock' });
+  assert.equal((await call(`${path}/selections`, host, { selectionToken: hostResult.data.candidates[0].selectionToken })).data.error.code, 'room_locked');
+  assert.equal((await call(`${path}/search`, host, { url })).data.error.code, 'room_locked');
+  await call(`${path}/action`, host, { action: 'unlock' });
+  const hostSelected = await call(`${path}/selections`, host, { selectionToken: hostResult.data.candidates[0].selectionToken });
+  assert.equal(hostSelected.response.status, 202);
+  await runPending(hostSelected.data.id, 'deliver');
+  assert.equal(queueCalls, queuedBefore + 3);
+  // A new intentional search permits the same song again; its saved metadata is still revalidated.
+  const repeat = await call(`${path}/search`, member, { url });
+  const repeated = await call(`${path}/selections`, member, { selectionToken: repeat.data.candidates[0].selectionToken });
+  assert.notEqual(repeated.data.id, id);
+  const changedTrack = { ...track, name: 'Test Song - Live' };
+  SpotifyClient.prototype.track.mock.mockImplementation(async () => changedTrack);
+  await runPending(repeated.data.id, 'deliver');
+  assert.equal(queueCalls, queuedBefore + 3, 'recording drift cannot send even an explicitly selected song');
+  assert.equal((await store.rows('SELECT failure_code FROM party_requests WHERE id=$1', [repeated.data.id]))[0].failure_code, 'recording_changed');
+  SpotifyClient.prototype.track.mock.mockImplementation(async () => track);
+  const unsent = await call(`${path}/search`, host, { url });
+  const pending = await call(`${path}/selections`, host, { selectionToken: unsent.data.candidates[0].selectionToken });
+  assert.equal(pending.response.status, 202);
+  await call(`${path}/action`, host, { action: 'close' });
+  await runPending(pending.data.id, 'deliver');
+  assert.equal((await call(`${path}/selections`, member, selection)).data.error.code, 'room_closed');
+  assert.equal((await call(`${path}/search`, member, { url })).data.error.code, 'room_closed');
+  assert.equal(queueCalls, queuedBefore + 3);
+  await store.rows("UPDATE party_rooms SET expires_at=now()-interval '1 second' WHERE id=$1", [active.id]);
+  assert.equal((await call(`${path}/search`, member, { url })).data.error.code, 'room_expired');
+  assert.equal((await call(`${path}/selections`, member, selection)).data.error.code, 'room_expired');
+});

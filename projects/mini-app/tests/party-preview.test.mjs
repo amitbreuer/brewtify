@@ -63,11 +63,37 @@ test('interactive preview changes sample state without calling real APIs', async
     const guest = new PartyDemoClient(false);
     assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 1);
     await assert.rejects(guest.request('/rooms/demo-room/action', { action: 'close' }));
-    await guest.request('/rooms/demo-room/requests', { url: 'https://open.spotify.com/track/demo' });
+    const result = await guest.request('/rooms/demo-room/search', { url: 'https://music.apple.com/us/song/123456789' });
+    assert.equal(result.candidates.length, 1);
+    assert.equal((await guest.request('/rooms/demo-room/requests')).requests.length, 1, 'search cannot enqueue');
+    const selection = { selectionToken: result.candidates[0].selectionToken };
+    const selected = await guest.request('/rooms/demo-room/selections', selection);
+    assert.deepEqual(await guest.request('/rooms/demo-room/selections', selection), selected);
     const after = await guest.request('/rooms/demo-room/requests');
     assert.equal(after.requests.length, 2);
-    assert.equal(after.requests[1].status, 'added');
+    assert.equal(after.requests[1].status, 'approved', 'click is not provider acceptance');
+    await new Promise(resolve => setTimeout(resolve, 1510));
+    assert.equal((await guest.request('/rooms/demo-room/requests')).requests[1].status, 'added');
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+test('demo exposes multiple choices, not found, rate errors and uncertain delivery without providers', async () => {
+  for (const scenario of ['multiple', 'not_found', 'rate_limited', 'failed', 'unknown', 'pending']) {
+    const client = new PartyDemoClient(false, scenario);
+    const search = client.request('/rooms/demo-room/search', { url: 'spotify:track:0123456789ABCDEFGHIJKL' });
+    if (scenario === 'rate_limited') {
+      await assert.rejects(search, error => error.status === 429 && error.retryAfterMs > 0);
+      continue;
+    }
+    const result = await search;
+    assert.equal(result.candidates.length, scenario === 'multiple' ? 2 : scenario === 'not_found' ? 0 : 1);
+    if (!result.candidates.length) continue;
+    await client.request('/rooms/demo-room/selections', { selectionToken: result.candidates[0].selectionToken });
+    await new Promise(resolve => setTimeout(resolve, 1510));
+    const request = (await client.request('/rooms/demo-room/requests')).requests.at(-1);
+    assert.equal(request.status, scenario === 'multiple' ? 'added' : scenario === 'pending' ? 'approved' : 'failed');
+    if (scenario === 'unknown') assert.equal(request.failureCode, 'delivery_unknown');
   }
 });

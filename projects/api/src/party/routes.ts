@@ -41,6 +41,7 @@ import {
   type MiniSession,
 } from './security';
 import { rows } from './store';
+import { searchSongs, selectSong, SELECTION_TOKEN_LIMIT } from './resolution';
 
 const log = createLogger('party');
 function field(req: Request, key: string, max = 2048): string {
@@ -162,7 +163,7 @@ partyRoutes.use((_req, _res, next) => {
   checkPrerequisites();
   next();
 });
-partyRoutes.use(express.json({ limit: '12kb' }));
+partyRoutes.use(express.json({ limit: '32kb' }));
 partyRoutes.get('/auth/launch', launchAuthorization);
 partyRoutes.get('/auth/callback', finishAuthorization);
 partyRoutes.post('/session', async (req, res) => {
@@ -237,6 +238,12 @@ partyRoutes.get('/rooms/:id/requests', async (req, res) => {
       typeof req.query.cursor === 'string' ? req.query.cursor : '0'
     )
   );
+});
+partyRoutes.post('/rooms/:id/search', async (req, res) => {
+  res.json(await searchSongs(who(res), param(req, 'id'), field(req, 'url')));
+});
+partyRoutes.post('/rooms/:id/selections', async (req, res) => {
+  res.status(202).json(await selectSong(who(res), param(req, 'id'), field(req, 'selectionToken', SELECTION_TOKEN_LIMIT)));
 });
 partyRoutes.post('/rooms/:id/requests', async (req, res) => {
   res
