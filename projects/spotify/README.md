@@ -25,7 +25,16 @@ any write. Unlike cross-catalog matching, this check has no duration tolerance.
 All requests use fixed official HTTPS origins, reject redirects, have an
 8-second deadline (including body consumption), and a 1 MiB response limit.
 Search requests use at most 10 results without imposing an Apple storefront
-as the Spotify market. The shared server transport also serves free iTunes Store
+as the Spotify market. Both search and direct track reads explicitly request
+`market=from_token`, Spotify's documented host-account market, without a country
+lookup or additional OAuth scopes. Without an explicit market, direct metadata
+can omit `is_playable` even for a track offered by search. See Spotify's
+[track relinking contract](https://developer.spotify.com/documentation/web-api/concepts/track-relinking).
+Unknown/false playability, restrictions, local tracks, relinking, and changed IDs
+still fail closed; a market parameter is not itself proof of playability.
+This changes only metadata reads: completed unavailable requests are not
+automatically retried. After deployment, a guest must search and select again.
+The shared server transport also serves free iTunes Store
 lookup (`itunes`, `https://itunes.apple.com/`); it never fetches submitted links.
 The shared transport uses an Undici dispatcher with a socket-connect DNS lookup.
 It resolves only the three allowlisted provider hosts, validates the complete

@@ -7,6 +7,8 @@ export const SPOTIFY_TRACK_ID = /^[A-Za-z0-9]{22}$/;
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/i;
 export const PROVIDER_DEADLINE_MS = 8_000;
 export const PROVIDER_BODY_LIMIT = 1_048_576;
+// Explicit market requests include playability/relinking evidence for the host.
+const HOST_MARKET = 'from_token';
 const providerDispatcher = new Agent({
   connect: { lookup: createProviderLookup(), timeout: PROVIDER_DEADLINE_MS },
   connections: 10,
@@ -342,12 +344,13 @@ export class SpotifyClient {
 
   async track(token: string, id: string): Promise<SpotifyTrack> {
     if (!SPOTIFY_TRACK_ID.test(id)) throw new SpotifyError('invalid_input');
-    return decodeTrack(await this.read(`tracks/${id}`, token));
+    const params = new URLSearchParams({ market: HOST_MARKET });
+    return decodeTrack(await this.read(`tracks/${id}?${params}`, token));
   }
 
   async search(token: string, query: string): Promise<SpotifyTrack[]> {
     if (!query || query.length > 1000) throw new SpotifyError('invalid_input');
-    const params = new URLSearchParams({ q: query, type: 'track', limit: '10' });
+    const params = new URLSearchParams({ q: query, type: 'track', limit: '10', market: HOST_MARKET });
     const items = object(object(await this.read(`search?${params}`, token)).tracks).items;
     if (!Array.isArray(items) || items.length > 10) throw new SpotifyError('invalid_response');
     return items.map(decodeTrack);
