@@ -5,14 +5,21 @@ Playlists/Artists views. Party requests append to the host's Spotify playback
 queue, never to a playlist or Spotify Jam. A successful command means **accepted,
 not played**. Spotify and other controllers can affect eventual playback order.
 
-New parties automatically add exact/high-confidence matches. Guests paste a
-song link and submit without entering a display name; the API stores a generic
-`Guest` label, not a Telegram name. The room has no settings or approval panel.
-Hosts share the invitation and can end the party (which deletes its credentials).
-Uncertain recordings still require an explicit host version choice, which queues
-the chosen version without a second approval. Recovery controls appear only
-when playback needs attention. Existing approval-mode rooms retain their mode;
-the API still accepts that mode for older clients.
+Hosts and guests paste a complete song link to search after 500 ms without
+submitting anything. Results use the same compact artwork/title/artist/album
+cards as the room list. Clicking a result is the **only confirmation**: it creates
+a durable queue job, without a dialog or routine host approval (including in
+legacy approval-mode rooms). Multiple version-safe matches remain explicit choices.
+The API stores a generic `Guest` label, not a Telegram name. The room has no
+settings or approval panel. Hosts share the invitation and can end the party
+(which deletes its credentials). Older submission/host-choice APIs retain their
+existing behavior for legacy requests and recovery.
+
+Search alone never creates a request or outbox job. The Mini App shows
+**Added to the queue** only after its own selected request is `added` following a
+confirmed Spotify 204; 202/outbox creation shows progress, not success. A completed
+current search with no eligible results shows **Not found** once. Provider
+outages, authentication failures and throttling stay explicit errors.
 
 Start party authorizes Spotify when needed, then opens the room automatically.
 There is no device-selection screen or separate create step. Queue commands use
@@ -198,10 +205,11 @@ Missing optional metadata stays unknown. Artwork is restricted to safe HTTPS
 CDN URLs. iTunes does **not** supply ISRCs. Matching still checks full title/artist,
 versions, duration and explicitness without fuzzy scoring. When Spotify supplies
 an ISRC but iTunes does not, even a unique otherwise-identical candidate needs a
-host version choice. This increases review frequency and can reduce match coverage
+version choice. The new flow lets the submitter make that choice directly by
+clicking the result; legacy submitted requests still need the host. This can reduce match coverage
 (including differently formatted multi-artist credits). No recording safety rule
-is relaxed. Choosing a version in an auto room queues it without another approval;
-direct Spotify links retain their existing automatic path.
+is relaxed. New direct Spotify links also wait for a result click; only legacy
+submissions retain their existing automatic path.
 
 The [archived iTunes API guidance](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html)
 quotes approximately 20 requests/minute, subject to change. Existing shared
@@ -214,6 +222,45 @@ durable job (60 seconds if absent/invalid), with `itunes_rate_limited` receipts;
 network/5xx/invalid-response errors follow bounded read retries. No in-process
 retry, sleep, or silent empty result hides an outage. Transport remains fixed-host,
 redirect-rejecting, DNS-vetted, limited to 1 MiB and an 8-second deadline.
+
+### Search and explicit selection API
+
+`POST /api/party/rooms/:id/search` accepts `{ url }`. Signed Telegram session,
+exact Origin, CSRF, live room and membership are required; guests use only the
+host's server-side credentials. Apple links use exact iTunes track ID/storefront
+then Spotify search. Spotify links use direct Spotify lookup, not iTunes.
+Both client and server share the strict link parser. Read-only resolution keeps
+all existing version/playability checks and returns `{ candidates, expiresAt }`,
+with a `selectionToken` on each candidate. It does not store search drafts or
+publish search results in the room feed.
+
+Each domain-separated HMAC-signed capability binds the session, room, canonical
+source, exact candidate metadata, common search nonce and expiry (at most five
+minutes, bounded by session/room expiry). Tokens contain no host credentials and
+are kept only in component memory. `POST /rooms/:id/selections` accepts only
+`{ selectionToken }`, never trusts client track IDs/metadata, and rechecks expiry,
+room and membership under the existing account lock. Request bodies are bounded
+to 32 KiB, selection tokens to 30,000 characters; oversized provider metadata is
+an explicit error rather than an unusable result.
+
+One common search nonce becomes the existing unique submission key. Concurrent
+or repeated clicks on the same candidate return the same request (an overlapping
+account operation may return retryable `host_busy`); choosing another candidate
+from a consumed search conflicts. No duplicate job or provider write is created.
+A fresh deliberate search permits adding the same song again. Selection creates
+an `approved` request and one `deliver` job atomically, with no legacy resolver
+job. Fresh pre-send recording validation, account serialization, 429 retry and
+unknown-write safeguards remain unchanged.
+
+Database throttles limit search to six per participant/room and sixteen per room
+per minute; selection has separate limits of eight and eighty respectively.
+These limits are shared across instances but are **not a global iTunes quota**
+or cache. They also do not replace provider Retry-After handling. The UI cancels
+and invalidates old searches on input/room changes or unmount, never auto-retries
+a failed search, and gates explicit rate-limit retries. It tracks only selections
+made by this mounted form for outcome toasts: polling old/other users' receipts
+or reloading does not replay success. Normal results need no second confirmation;
+exceptional unknown-delivery recovery still requires host duplicate-risk consent.
 
 ### Queue delivery
 
@@ -308,3 +355,15 @@ Spotify. The local preview responded over HTTP, but browser regression checks
 were blocked before loading a page: system Chrome timed out on launch and cached
 headless Chromium crashed with SIGSEGV. No browser pass is claimed for this change.
 These checks do not establish live Spotify, signed Telegram or cloud readiness.
+
+The search-and-select follow-up adds native PostgreSQL coverage for read-only
+search, session/room/source-bound capabilities, tampering, expiry, revoked
+membership, concurrent idempotent clicks, deliberate repeated additions and
+recording drift. React DOM tests exercise real components with controlled timers
+for debounce, stale responses, shared card markup, direct one-click selection,
+confirmed-only one-time toasts, not-found versus errors and expiry. These DOM
+tests do not establish browser layout or keyboard behavior. Browser regression
+tests were updated, but local launch remains blocked: system Chrome timed out
+with EPERM during cleanup, cached headless Chromium 1234 crashed with SIGSEGV,
+and cached Chromium 1194 timed out. The HTTP-responsive preview is available
+on port 5213; no rendered-browser verification is claimed for this follow-up.

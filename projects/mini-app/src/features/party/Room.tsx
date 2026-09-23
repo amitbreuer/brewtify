@@ -7,6 +7,7 @@ import { RequestCard } from './RequestCard';
 import type { RequestAction } from './RequestCard';
 import { usePolling } from './usePolling';
 import { partyFailureMessage } from './messages';
+import { SongSearch } from './SongSearch';
 
 export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
   client: PartyClient;
@@ -21,13 +22,10 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
   const [pollError, setPollError] = useState('');
   const [terminalStatus, setTerminalStatus] = useState<'closed' | 'expired' | null>(null);
   const [busy, setBusy] = useState(false);
-  const [url, setUrl] = useState('');
-  const [receipt, setReceipt] = useState('');
   const [inviteUrl, setInviteUrl] = useState('');
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const cursor = useRef<string | null>(null);
-  const submission = useRef<{ signature: string; key: string } | null>(null);
   const path = `/rooms/${encodeURIComponent(initialRoom.id)}`;
   const status = terminalStatus ?? room.status;
   const inactive = status === 'closed' || status === 'expired';
@@ -37,6 +35,7 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
   const readFeed = useCallback(async (signal?: AbortSignal) => {
     const query = cursor.current ? `?cursor=${encodeURIComponent(cursor.current)}` : '';
     const feed = await client.request<PartyFeed>(`${path}/requests${query}`, undefined, signal);
+    if (signal?.aborted) return { stop: true };
     setRoom(feed.room);
     roomChangeRef.current(feed.room);
     setRequests((current) => mergeFeed(current, feed.requests));
@@ -94,20 +93,6 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
     });
   }
 
-  async function submit() {
-    const data = { url: url.trim() };
-    const signature = JSON.stringify(data);
-    if (!submission.current || submission.current.signature !== signature) submission.current = { signature, key: crypto.randomUUID() };
-    const submissionKey = submission.current.key;
-    await run(async () => {
-      await client.request(`${path}/requests`, { ...data, submissionKey });
-      setUrl('');
-      submission.current = null;
-      setReceipt('Song submitted.');
-      await readFeed();
-    });
-  }
-
   async function copyInvite() {
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -160,13 +145,7 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
         </section>
       )}
       {!inactive && (
-        <form className="party-card party-stack" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          <h2>Add a song</h2>
-          <label className="sr-only" htmlFor="party-song">Spotify or Apple Music song link</label>
-          <input id="party-song" value={url} onChange={(event) => { setUrl(event.target.value); setReceipt(''); }} required maxLength={2048} autoComplete="off" placeholder="Paste a Spotify or Apple Music link" disabled={room.status !== 'open' || busy} />
-          <button disabled={busy || room.status !== 'open' || !url.trim()}>Add song</button>
-          {receipt && <p className="sr-only" role="status">{receipt}</p>}
-        </form>
+        <SongSearch key={`${room.id}:${room.status}`} client={client} path={path} enabled={room.status === 'open'} requests={requests} />
       )}
       <section className="party-stack" aria-label={room.isHost ? 'Party songs' : 'Your songs'}>
         <h2>{room.isHost ? 'Party songs' : 'Your songs'}</h2>

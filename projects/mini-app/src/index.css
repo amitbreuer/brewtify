@@ -103,6 +103,8 @@
 .party-track > div { min-width: 0; }
 .party-track img { height: 64px; width: 64px; flex: none; object-fit: cover; }
 .party-song-row { padding: 0.6rem; border-radius: 0.6rem; gap: 0.5rem; }
+.party-page .party-song-choice { width: 100%; padding: 0.6rem; border-radius: 0.6rem; background: #1c1c1c; border-color: #383838; color: white; text-align: left; font-weight: inherit; }
+.party-page .party-song-choice:not(:disabled):hover { background: #292929; }
 .party-song-row .party-track { align-items: center; gap: 0.65rem; }
 .party-song-row .party-track img, .party-artwork-placeholder { width: 48px; height: 48px; border-radius: 0.3rem; flex: none; }
 .party-artwork-placeholder { background: #303030; }

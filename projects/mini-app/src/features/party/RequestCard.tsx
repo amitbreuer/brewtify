@@ -1,5 +1,6 @@
 import type { PartyRequestDto } from '@brewtify/shared';
 import { partyFailureMessage } from './messages';
+import { SongCard } from './SongCard';
 
 function formatDuration(ms: number) {
   return `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
@@ -29,15 +30,8 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
   const unknown = request.failureCode === 'delivery_unknown';
   const reviewable = ['matched', 'needs_review'].includes(request.status);
   return (
-    <article className="party-card party-stack party-song-row">
-      <div className="party-track">
-        {track?.artwork ? <img src={track.artwork} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="party-artwork-placeholder" aria-hidden="true" />}
-        <div>
-          <h3 title={track?.title}>{track?.title ?? 'Finding your song…'}</h3>
-          {track && <p title={`${track.artist} · ${track.album}`}>{track.artist} · {track.album}</p>}
-          {reviewable && request.source && request.selected && <p className="party-muted">Original: {request.source.title} — {request.source.artist}</p>}
-        </div>
-      </div>
+    <SongCard track={track}>
+      {reviewable && request.source && request.selected && <p className="party-muted">Original: {request.source.title} — {request.source.artist}</p>}
       {(request.status !== 'added' || unknown) && <p className={unknown ? 'party-warning' : 'party-status'}>{unknown ? 'Outcome unknown · this song may already be in the Spotify queue' : statusText[request.status]}</p>}
       {request.failureCode && !unknown && <p className="party-muted">{partyFailureMessage(request.failureCode)}</p>}
       {isHost && actionable && (reviewable || request.status === 'failed') && (
@@ -64,6 +58,6 @@ export function RequestCard({ request, isHost, actionable, busy, onAction }: {
           </div>
         </>
       )}
-    </article>
+    </SongCard>
   );
 }

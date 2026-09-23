@@ -27,6 +27,11 @@ export interface PartyCandidate extends PartyTrack {
   evidence: string[];
 }
 
+export interface PartySearchResult {
+  candidates: (PartyCandidate & { selectionToken: string })[];
+  expiresAt: string;
+}
+
 export interface PartyRequestDto {
   id: string;
   displayName: string;

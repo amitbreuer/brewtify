@@ -1,4 +1,5 @@
 import type { PartyCandidate, PartyConfidence, PartyTrack } from '@brewtify/shared';
+import { InvalidSongLink, parsePartySongLink, type SongLink } from '@brewtify/shared';
 import {
   providerRequest, ProviderTransportError, SPOTIFY_TRACK_ID, SpotifyError,
   trackEligibility, type SpotifyTrack,
@@ -6,9 +7,7 @@ import {
 
 export { assertTrackEligible, trackEligibility } from '@brewtify/spotify';
 
-export type SongLink =
-  | { provider: 'spotify'; id: string; url: string }
-  | { provider: 'apple_music'; id: string; storefront: string; url: string };
+export type { SongLink } from '@brewtify/shared';
 
 export class CatalogError extends Error {
   constructor(
@@ -22,53 +21,17 @@ export class CatalogError extends Error {
   }
 }
 
-const APPLE_ID = /^[1-9]\d{0,19}$/;
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 export const MATCH_DURATION_TOLERANCE_MS = 2_000;
 export const MAX_MATCH_CANDIDATES = 10;
 
 export function parseSongLink(input: string): SongLink {
-  const fail = (): never => { throw new CatalogError('invalid_song_link'); };
-  if (typeof input !== 'string' || input.length > 2048) return fail();
-  const text = input.trim();
-  const uri = /^spotify:track:([A-Za-z0-9]{22})$/.exec(text);
-  if (uri) return { provider: 'spotify', id: uri[1], url: `https://open.spotify.com/track/${uri[1]}` };
-  // URL parsers normalize backslashes, controls and dot paths; reject them before parsing.
-  if (!text || /[\u0000-\u0020\u007f\\]/.test(text) || !/^https:\/\//i.test(text)) return fail();
-  let url: URL;
-  try { url = new URL(text); } catch { return fail(); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return fail();
-  const authority = text.slice(text.indexOf('://') + 3).split(/[/?#]/, 1)[0];
-  if (!/^(open\.spotify\.com|music\.apple\.com)$/i.test(authority)) return fail();
-  const rawPath = text.slice(text.indexOf(authority) + authority.length).split(/[?#]/, 1)[0];
-  if (rawPath !== url.pathname || /(?:^|\/)\.{1,2}(?:\/|$)/.test(rawPath)) return fail();
-  if (url.hostname === 'open.spotify.com') {
-    const match = /^\/(?:intl-[a-z]{2}(?:-[A-Z]{2})?\/)?track\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);
-    if (!match) return fail();
-    return { provider: 'spotify', id: match[1], url: `https://open.spotify.com/track/${match[1]}` };
+  try {
+    return parsePartySongLink(input);
+  } catch (error) {
+    if (error instanceof InvalidSongLink) throw new CatalogError('invalid_song_link');
+    throw error;
   }
-  if (url.hostname !== 'music.apple.com') return fail();
-  const match = /^\/([a-z]{2})\/(song|album)\/(?:([^/]+)\/)?([1-9]\d{0,19})\/?$/.exec(url.pathname);
-  if (!match) return fail();
-  if (match[3]) {
-    try {
-      if (/[/\\\u0000-\u001f\u007f]/.test(decodeURIComponent(match[3]))) return fail();
-    } catch { return fail(); }
-  }
-  const ids = url.searchParams.getAll('i');
-  let id = match[4];
-  if (match[2] === 'album') {
-    if (ids.length !== 1 || !APPLE_ID.test(ids[0])) return fail();
-    id = ids[0];
-  } else if (ids.length > 0) {
-    // A song route with a second identifier is ambiguous, even if they happen to agree.
-    return fail();
-  }
-  if (!Number.isSafeInteger(Number(id))) return fail();
-  return {
-    provider: 'apple_music', id, storefront: match[1],
-    url: `https://music.apple.com/${match[1]}/song/${id}`,
-  };
 }
 
 function record(value: unknown): Record<string, unknown> {

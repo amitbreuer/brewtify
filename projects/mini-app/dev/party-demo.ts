@@ -1,4 +1,4 @@
-import type { PartyCandidate, PartyRequestDto, PartyRoomDto } from '@brewtify/shared';
+import { parsePartySongLink, type PartyCandidate, type PartyRequestDto, type PartyRoomDto } from '@brewtify/shared';
 import { PartyClient, PartyError } from '../src/features/party/api.ts';
 
 function artwork(color: string, accent: string): string {
@@ -22,13 +22,19 @@ function sampleRequests(): PartyRequestDto[] {
 }
 
 // This transport never calls fetch or delegates to the authenticated Party client.
+export type DemoScenario = 'match' | 'multiple' | 'not_found' | 'rate_limited' | 'failed' | 'unknown' | 'pending';
+
 export class PartyDemoClient extends PartyClient {
   room: PartyRoomDto;
   private requests = sampleRequests();
   private revision = 1;
+  private offers = new Map<string, { candidate: PartyCandidate; url: string; expires: number; id?: string }>();
+  private delivery = new Map<string, number>();
+  private scenario: DemoScenario;
 
-  constructor(isHost: boolean) {
+  constructor(isHost: boolean, scenario: DemoScenario = 'match') {
     super();
+    this.scenario = scenario;
     this.room = {
       id: 'demo-room', status: 'open', mode: 'auto',
       expiresAt: new Date(Date.now() + 12 * 3600_000).toISOString(),
@@ -44,20 +50,46 @@ export class PartyDemoClient extends PartyClient {
     if (route === '/rooms/demo-room/invite' && body === undefined) {
       result = { inviteUrl: 'https://example.invalid/party-demo-not-a-real-invitation' };
     } else if (route === '/rooms/demo-room/requests' && body === undefined) {
-      result = { room: this.room, requests: this.room.isHost ? this.requests : this.requests.filter(request => request.displayName === 'You'), nextCursor: String(this.revision) };
-    } else if (route === '/rooms/demo-room/requests' && body !== undefined) {
-      if (this.room.status !== 'open') throw new PartyError('This demo party is not accepting songs.');
-      if (typeof input.url !== 'string' || !/^https:\/\/(open\.spotify\.com|music\.apple\.com)\//.test(input.url)) {
-        throw new PartyError('Paste a Spotify or Apple Music song link. Demo mode never looks it up.');
+      for (const request of this.requests) {
+        if (request.status !== 'approved' || Date.now() < (this.delivery.get(request.id) ?? Infinity) || this.scenario === 'pending') continue;
+        request.status = this.scenario === 'failed' || this.scenario === 'unknown' ? 'failed' : 'added';
+        request.failureCode = this.scenario === 'unknown' ? 'delivery_unknown' : this.scenario === 'failed' ? 'device_unavailable' : null;
+        request.updatedAt = new Date().toISOString();
+        this.revision++;
       }
-      const id = crypto.randomUUID();
-      this.requests.push({
-        id, displayName: 'You',
-        sourceUrl: input.url, selected: { ...tracks[0], title: 'Your sample song', artist: 'Demo catalog - not looked up' },
-        candidates: [], confidence: 'exact', status: 'added', failureCode: null,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      });
-      result = { id };
+      result = { room: this.room, requests: this.room.isHost ? this.requests : this.requests.filter(request => request.displayName === 'You'), nextCursor: String(this.revision) };
+    } else if (route === '/rooms/demo-room/search' && body !== undefined) {
+      if (this.room.status !== 'open') throw new PartyError('This demo party is not accepting songs.');
+      if (typeof input.url !== 'string') throw new PartyError('Paste a song link.');
+      const link = parsePartySongLink(input.url);
+      await new Promise(resolve => setTimeout(resolve, 250));
+      signal?.throwIfAborted();
+      if (this.scenario === 'rate_limited') throw new PartyError('Demo rate limit. Try again shortly.', 'rate_limited', 429, 2000);
+      const candidates = this.scenario === 'not_found' ? [] : this.scenario === 'multiple'
+        ? [tracks[0], { ...tracks[0], id: 'demo-afterglow-single', album: 'Afterglow - Single' }]
+        : [tracks[0]];
+      const expires = Date.now() + 5 * 60_000;
+      result = { expiresAt: new Date(expires).toISOString(), candidates: candidates.map(candidate => {
+        const selectionToken = crypto.randomUUID();
+        this.offers.set(selectionToken, { candidate, url: link.url, expires });
+        return { ...candidate, selectionToken };
+      }) };
+    } else if (route === '/rooms/demo-room/selections' && body !== undefined) {
+      if (this.room.status !== 'open') throw new PartyError('This demo party is not accepting songs.');
+      const offer = typeof input.selectionToken === 'string' && this.offers.get(input.selectionToken);
+      if (!offer || offer.expires <= Date.now()) throw new PartyError('Search again and choose a sample result.');
+      if (offer.id) result = { id: offer.id };
+      else {
+        const id = crypto.randomUUID();
+        offer.id = id;
+        this.requests.push({
+          id, displayName: 'You', sourceUrl: offer.url, selected: offer.candidate,
+          candidates: [], confidence: 'ambiguous', status: 'approved', failureCode: null,
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        });
+        this.delivery.set(id, Date.now() + 1500);
+        result = { id };
+      }
     } else if (route === '/rooms/demo-room/action' && body !== undefined && this.room.isHost) {
       if (input.action === 'lock') this.room.status = 'locked';
       else if (input.action === 'unlock') this.room.status = 'open';

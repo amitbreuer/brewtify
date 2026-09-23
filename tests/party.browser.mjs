@@ -10,6 +10,7 @@ before(async () => {
       ? { executablePath: process.env.CHROME_PATH }
       : { channel: 'chrome' }),
     headless: true,
+    timeout: 20000,
   });
 });
 after(async () => {
@@ -78,9 +79,15 @@ test('interactive demo renders host, guest and direct start with no API traffic'
   }
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.getByText('Song links only. No music account needed.', { exact: true }).count(), 0);
-  await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill('https://open.spotify.com/track/demo');
-  await page.getByRole('button', { name: 'Add song', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your sample song', exact: true }).waitFor();
+  await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill('https://open.spotify.com/track/0123456789ABCDEFGHIJKL');
+  const result = page.getByRole('button', { name: 'Afterglow Northern Lines · Blue Hour', exact: true });
+  await result.waitFor();
+  assert.equal(await page.getByRole('article').count(), 1, 'search does not add a song');
+  assert.equal((await result.locator('img').boundingBox()).width, 48);
+  assert.ok((await result.boundingBox()).height <= 80);
+  await result.click();
+  await page.getByText('Added to the queue', { exact: true }).waitFor();
+  await page.getByRole('article').getByRole('heading', { name: 'Afterglow', exact: true }).waitFor();
   assert.equal(await page.getByRole('article').count(), 2);
   assert.equal(await page.getByText('Added to host’s Spotify queue', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Start screen', exact: true }).click();
@@ -137,6 +144,53 @@ test('mobile Party opens without Library requests or unsigned authentication', a
   );
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+test('host and guest search cards match list dimensions, select with keyboard and distinguish no-match from errors', async () => {
+  for (const role of ['host', 'guest']) {
+    const page = await previewPage({ viewport: { width: 390, height: 844 } });
+    try {
+      await page.goto(`${base}/app/?section=party&demo=${role}`);
+      const input = page.getByLabel('Spotify or Apple Music song link', { exact: true });
+      await page.getByLabel('Search / delivery sample').selectOption('multiple');
+      await input.fill('https://music.apple.com/us/song/123456789');
+      const results = page.locator('.party-song-choice');
+      await results.nth(1).waitFor();
+      assert.equal(await results.count(), 2);
+      const before = await page.getByRole('article').count();
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 844 });
+        assert.equal((await results.first().locator('img').boundingBox()).width, 48);
+        assert.equal((await results.first().locator('img').boundingBox()).height, 48);
+        assert.ok((await results.first().boundingBox()).height <= 80);
+        assert.equal(await results.first().locator('h3').evaluate(element => getComputedStyle(element).fontSize),
+          await page.getByRole('article').first().locator('h3').evaluate(element => getComputedStyle(element).fontSize));
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+      }
+      assert.equal(await page.getByRole('article').count(), before);
+      assert.equal(await page.getByText('Added to the queue', { exact: true }).count(), 0);
+      await results.first().focus();
+      await results.first().press('Enter');
+      await page.getByText('Added to the queue', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('article').count(), before + 1);
+      for (const scenario of ['not_found', 'rate_limited', 'unknown']) {
+        await page.getByLabel('Search / delivery sample').selectOption(scenario);
+        await input.fill('https://music.apple.com/us/song/123456789');
+        if (scenario === 'not_found') {
+          await page.getByText('Not found', { exact: true }).waitFor();
+          assert.equal(await results.count(), 0);
+          await page.getByText('Not found', { exact: true }).waitFor({ state: 'hidden' });
+        } else if (scenario === 'rate_limited') {
+          await page.getByRole('alert').getByText(/Too many requests/).waitFor();
+          assert.equal(await page.getByText('Not found', { exact: true }).count(), 0);
+        } else {
+          await results.first().click();
+          await page.getByText(/Outcome unknown/).first().waitFor();
+          assert.equal(await page.getByText('Added to the queue', { exact: true }).count(), 0);
+        }
+      }
+    } finally { await page.close(); }
+  }
 });
 
 test('Library loading and errors never hide Party navigation', async () => {
@@ -236,6 +290,7 @@ test('recording confirmation and nameless submissions retain the Party CSRF cont
   };
   let approval;
   let submission;
+  let search;
   await page.route('https://telegram.org/js/telegram-web-app.js', (route) =>
     route.fulfill({
       contentType: 'text/javascript',
@@ -255,11 +310,13 @@ test('recording confirmation and nameless submissions retain the Party CSRF cont
       data = {
         inviteUrl: `https://t.me/test_party_bot?startapp=p_${'a'.repeat(43)}`,
       };
-    else if (path.endsWith('/requests')) {
-      if (http.method() === 'POST') {
-        submission = { body: http.postDataJSON(), csrf: http.headers()['x-party-csrf'] };
-        data = { id: 'new-song' };
-      } else data = { room, requests: [request], nextCursor: '1' };
+    else if (path.endsWith('/requests')) data = { room, requests: [request], nextCursor: '1' };
+    else if (path.endsWith('/search')) {
+      search = { body: http.postDataJSON(), csrf: http.headers()['x-party-csrf'] };
+      data = { candidates: [{ ...request.selected, selectionToken: 'signed-fixture' }], expiresAt: new Date(Date.now() + 300000).toISOString() };
+    } else if (path.endsWith('/selections')) {
+      submission = { body: http.postDataJSON(), csrf: http.headers()['x-party-csrf'] };
+      data = { id: 'new-song' };
     }
     else if (path.endsWith('/action')) {
       approval = {
@@ -287,13 +344,16 @@ test('recording confirmation and nameless submissions retain the Party CSRF cont
   });
   const link = 'https://open.spotify.com/track/0123456789ABCDEFGHIJKL';
   await page.getByLabel('Spotify or Apple Music song link', { exact: true }).fill(link);
-  const submitted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/requests'));
-  await page.getByRole('button', { name: 'Add song', exact: true }).click();
+  const result = page.getByRole('button', { name: 'Song Artist · Album', exact: true });
+  await result.waitFor();
+  assert.deepEqual(search, { body: { url: link }, csrf: 'test-csrf' });
+  assert.equal(submission, undefined);
+  const submitted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/selections'));
+  await result.click();
   await submitted;
   assert.equal(submission.csrf, 'test-csrf');
-  assert.equal(submission.body.url, link);
-  assert.match(submission.body.submissionKey, /^[a-f0-9-]{36}$/);
-  assert.deepEqual(Object.keys(submission.body).sort(), ['submissionKey', 'url']);
+  assert.deepEqual(submission.body, { selectionToken: 'signed-fixture' });
+  assert.equal(await page.getByText('Added to the queue', { exact: true }).count(), 0);
   assert.equal(await page.getByRole('img', { name: /QR/i }).count(), 1);
   assert.equal(
     await page.evaluate(
