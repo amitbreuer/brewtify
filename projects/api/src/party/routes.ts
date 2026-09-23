@@ -99,7 +99,7 @@ export const partyErrorHandler: ErrorRequestHandler = (
     error instanceof CatalogError
       ? error.code === 'invalid_song_link'
         ? 400
-        : error.code === 'apple_rate_limited'
+        : error.code === 'itunes_rate_limited'
           ? 429
           : 503
       : known &&

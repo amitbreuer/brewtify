@@ -25,8 +25,8 @@ any write. Unlike cross-catalog matching, this check has no duration tolerance.
 All requests use fixed official HTTPS origins, reject redirects, have an
 8-second deadline (including body consumption), and a 1 MiB response limit.
 Search requests use at most 10 results without imposing an Apple storefront
-as the Spotify market. The shared server transport also serves the official
-Apple catalog API; it never fetches submitted links.
+as the Spotify market. The shared server transport also serves free iTunes Store
+lookup (`itunes`, `https://itunes.apple.com/`); it never fetches submitted links.
 The shared transport uses an Undici dispatcher with a socket-connect DNS lookup.
 It resolves only the three allowlisted provider hosts, validates the complete
 answer set, and returns those exact vetted addresses to the connecting socket
@@ -46,19 +46,33 @@ unknown-delivery handling, never automatic resending. Explicit 429 rejections
 carry the provider delay (60 seconds when absent/invalid) for durable scheduling.
 Do not infer Premium requirements from generic 403 responses.
 
-The API catalog adapter requires `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, and
-`APPLE_MUSIC_PRIVATE_KEY` (P-256 PEM, with literal or escaped newlines). It signs
-short-lived ES256 developer JWTs; no Apple user token is requested.
+The API catalog adapter resolves Apple Music song links with an exact numeric ID
+and the original storefront using public iTunes Store lookup. It requires no
+Apple credentials, developer membership or signing key, and has no paid API fallback.
+An empty result is unavailable, never a reason to try another country or recording.
+iTunes Store coverage is not the complete Apple Music catalog and supplies no ISRC.
+Only track explicitness is used: `explicit` is true; `cleaned` and `notExplicit`
+are false; omission is unknown. Collection explicitness is never substituted.
 
 Matching uses full normalized title and artist equality, version-bearing album
 checks, known explicitness, and a maximum 2-second duration difference. ISRC
 contradictions always reject. Unique complete ISRC matches are exact; without
 ISRC on either side, complete title/artist/album evidence can be high confidence.
-One-sided missing ISRC, unrated Apple tracks, other missing critical evidence,
+One-sided missing ISRC, unrated iTunes tracks, other missing critical evidence,
 or multiple viable editions require host review. No fuzzy scoring resolves ties.
 Provider/configuration outages are errors, not empty catalog results.
+Most identified Spotify candidates therefore need a host version choice for iTunes
+sources; combined artist formatting can also reduce coverage. This does not change
+direct Spotify matching or allow title-only auto-selection.
+
+The public service's archived guidance estimates 20 requests/minute, subject to
+change. Party keeps its existing submission throttles and durable 429 scheduling,
+not a global iTunes quota or lookup cache. Cross-instance aggregate quota compliance
+is not guaranteed. See [the Party runbook](../../docs/party-queue.md) before widening
+the pilot. Catalog failures/receipts use `itunes_*` codes rather than paid-API
+credential errors.
 
 Run `npm test --workspace=@brewtify/spotify` after installing root dependencies
 and building `@brewtify/shared`. API catalog fixtures run with the API's
 Node test runner. Tests use mocked providers and do not prove live pilot access,
-market evidence, Telegram behavior, Apple credentials, or actual enqueue access.
+market evidence, Telegram behavior, live iTunes coverage, or actual enqueue access.

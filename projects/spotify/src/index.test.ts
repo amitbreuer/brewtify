@@ -220,7 +220,9 @@ test('fixed origins and redirect rejection prevent arbitrary destinations', asyn
     assert.equal(init?.redirect, 'manual');
     return new Response(null, { status: 302, headers: { Location: 'http://169.254.169.254/' } });
   });
-  await assert.rejects(providerRequest('apple', 'catalog/us/songs/123', {}), /redirect_rejected/);
+  await assert.rejects(providerRequest('itunes', 'lookup?id=123&country=us', {}), /redirect_rejected/);
+  await assert.rejects(providerRequest('itunes', 'https://api.music.apple.com/v1/catalog/us/songs/123', {}), /invalid_response/);
+  await assert.rejects(providerRequest('itunes', '//127.0.0.1/lookup?id=123', {}), /invalid_response/);
   await assert.rejects(providerRequest('spotify', 'https://evil.example/', {}), /invalid_response/);
   await assert.rejects(providerRequest('spotify', '//127.0.0.1/', {}), /invalid_response/);
   await assert.rejects(providerRequest('spotify', '../../other', {}), /invalid_response/);

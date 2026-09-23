@@ -84,11 +84,11 @@ test('socket lookup rejects empty, malformed and mismatched-family DNS answers a
 
 test('socket lookup cannot resolve unapproved hostnames or literals', async () => {
   let calls = 0;
-  for (const hostname of ['evil.example', 'api.spotify.com.evil.example', '127.0.0.1', '35.186.224.25', 'api.music.apple.com.']) {
+  for (const hostname of ['evil.example', 'api.spotify.com.evil.example', '127.0.0.1', '35.186.224.25', 'itunes.apple.com.', 'itunes.apple.com.evil.example', 'api.music.apple.com']) {
     await assert.rejects(runLookup(async () => { calls++; return []; }, {}, hostname), { code: 'EACCES' });
   }
   assert.equal(calls, 0);
-  for (const hostname of ['api.spotify.com', 'accounts.spotify.com', 'api.music.apple.com']) {
+  for (const hostname of ['api.spotify.com', 'accounts.spotify.com', 'itunes.apple.com']) {
     assert.equal((await runLookup(async () => [{ address: '35.186.224.25', family: 4 }], {}, hostname)).address, '35.186.224.25');
   }
 });

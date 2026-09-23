@@ -1,4 +1,3 @@
-import { createPrivateKey, sign } from 'node:crypto';
 import type { PartyCandidate, PartyConfidence, PartyTrack } from '@brewtify/shared';
 import {
   providerRequest, ProviderTransportError, SPOTIFY_TRACK_ID, SpotifyError,
@@ -7,17 +6,14 @@ import {
 
 export { assertTrackEligible, trackEligibility } from '@brewtify/spotify';
 
-export interface SongLink {
-  provider: 'spotify' | 'apple_music';
-  id: string;
-  storefront?: string;
-  url: string;
-}
+export type SongLink =
+  | { provider: 'spotify'; id: string; url: string }
+  | { provider: 'apple_music'; id: string; storefront: string; url: string };
 
 export class CatalogError extends Error {
   constructor(
-    public readonly code: 'invalid_song_link' | 'apple_configuration' | 'apple_unauthorized'
-      | 'apple_rate_limited' | 'apple_unavailable' | 'apple_invalid_response' | 'apple_rejected',
+    public readonly code: 'invalid_song_link' | 'itunes_rate_limited'
+      | 'itunes_unavailable' | 'itunes_invalid_response' | 'itunes_rejected',
     public readonly status?: number,
     public readonly retryAfterSeconds?: number,
   ) {
@@ -68,6 +64,7 @@ export function parseSongLink(input: string): SongLink {
     // A song route with a second identifier is ambiguous, even if they happen to agree.
     return fail();
   }
+  if (!Number.isSafeInteger(Number(id))) return fail();
   return {
     provider: 'apple_music', id, storefront: match[1],
     url: `https://music.apple.com/${match[1]}/song/${id}`,
@@ -77,27 +74,6 @@ export function parseSongLink(input: string): SongLink {
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown> : {};
-}
-
-function appleDeveloperToken(): string {
-  const teamId = process.env.APPLE_MUSIC_TEAM_ID;
-  const keyId = process.env.APPLE_MUSIC_KEY_ID;
-  const privateKey = process.env.APPLE_MUSIC_PRIVATE_KEY;
-  if (!teamId || !keyId || !privateKey || !/^[A-Z0-9]{10}$/.test(teamId) || !/^[A-Z0-9]{10}$/.test(keyId)) {
-    throw new CatalogError('apple_configuration');
-  }
-  try {
-    const key = createPrivateKey(privateKey.replace(/\\n/g, '\n'));
-    if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
-      throw new Error('Expected a P-256 signing key');
-    }
-    const now = Math.floor(Date.now() / 1000);
-    const encode = (data: unknown) => Buffer.from(JSON.stringify(data)).toString('base64url');
-    const unsigned = `${encode({ alg: 'ES256', kid: keyId })}.${encode({ iss: teamId, iat: now, exp: now + 300 })}`;
-    return `${unsigned}.${sign('sha256', Buffer.from(unsigned), { key, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`;
-  } catch {
-    throw new CatalogError('apple_configuration');
-  }
 }
 
 function safeArtwork(value: unknown): string | undefined {
@@ -111,50 +87,50 @@ function safeArtwork(value: unknown): string | undefined {
   } catch { return undefined; }
 }
 
-async function appleSong(link: SongLink): Promise<PartyTrack | undefined> {
-  const token = appleDeveloperToken();
+async function itunesSong(link: Extract<SongLink, { provider: 'apple_music' }>): Promise<PartyTrack | undefined> {
   let response;
   try {
-    response = await providerRequest('apple', `catalog/${link.storefront}/songs/${link.id}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    const query = new URLSearchParams({ id: link.id, country: link.storefront });
+    response = await providerRequest('itunes', `lookup?${query}`, {
+      headers: { Accept: 'application/json' },
     });
   } catch (error) {
     if (error instanceof ProviderTransportError) {
-      throw new CatalogError(error.code === 'network' ? 'apple_unavailable' : 'apple_invalid_response', error.status);
+      throw new CatalogError(error.code === 'network' ? 'itunes_unavailable' : 'itunes_invalid_response', error.status);
     }
     throw error;
   }
   if (response.status === 404) return undefined;
-  if (response.status === 401 || response.status === 403) throw new CatalogError('apple_unauthorized', response.status);
-  if (response.status === 429) throw new CatalogError('apple_rate_limited', 429, response.retryAfterSeconds ?? 60);
-  if (response.status >= 500) throw new CatalogError('apple_unavailable', response.status);
-  if (response.status !== 200) throw new CatalogError('apple_rejected', response.status);
-  const data = record(response.body).data;
-  if (!Array.isArray(data) || data.length > 1) throw new CatalogError('apple_invalid_response');
-  if (!data.length) return undefined;
-  const song = record(data[0]);
-  const attributes = record(song.attributes);
-  if (song.id !== link.id || song.type !== 'songs'
-    || typeof attributes.name !== 'string' || !attributes.name || attributes.name.length > 1000
-    || typeof attributes.artistName !== 'string' || !attributes.artistName || attributes.artistName.length > 1000
-    || typeof attributes.albumName !== 'string' || attributes.albumName.length > 1000
-    || (attributes.durationInMillis !== undefined && (typeof attributes.durationInMillis !== 'number'
-      || !Number.isFinite(attributes.durationInMillis) || attributes.durationInMillis <= 0))
-    || (attributes.contentRating !== undefined && !['explicit', 'clean'].includes(String(attributes.contentRating)))) {
-    throw new CatalogError('apple_invalid_response');
+  if (response.status === 429) throw new CatalogError('itunes_rate_limited', 429, response.retryAfterSeconds ?? 60);
+  if (response.status >= 500) throw new CatalogError('itunes_unavailable', response.status);
+  if (response.status !== 200) throw new CatalogError('itunes_rejected', response.status);
+  const body = record(response.body);
+  const results = body.results;
+  if (!Array.isArray(results) || results.length > 1 || body.resultCount !== results.length) {
+    throw new CatalogError('itunes_invalid_response');
   }
-  if (attributes.isrc !== undefined && (typeof attributes.isrc !== 'string' || !ISRC.test(attributes.isrc.toUpperCase()))) {
-    throw new CatalogError('apple_invalid_response');
+  if (!results.length) return undefined;
+  const song = record(results[0]);
+  if (!Number.isSafeInteger(song.trackId) || String(song.trackId) !== link.id || song.kind !== 'song'
+    || song.wrapperType !== 'track'
+    || typeof song.trackName !== 'string' || !song.trackName.trim() || song.trackName.length > 1000
+    || typeof song.artistName !== 'string' || !song.artistName.trim() || song.artistName.length > 1000
+    || (song.collectionName !== undefined && (typeof song.collectionName !== 'string' || song.collectionName.length > 1000))
+    || (song.trackTimeMillis !== undefined && (typeof song.trackTimeMillis !== 'number'
+      || !Number.isSafeInteger(song.trackTimeMillis) || song.trackTimeMillis <= 0))
+    || (song.trackExplicitness !== undefined && (typeof song.trackExplicitness !== 'string'
+      || !['explicit', 'cleaned', 'notExplicit'].includes(song.trackExplicitness)))) {
+    throw new CatalogError('itunes_invalid_response');
   }
-  const rawArtwork = record(attributes.artwork).url;
   return {
-    id: link.id, title: attributes.name, artist: attributes.artistName, album: attributes.albumName,
-    durationMs: typeof attributes.durationInMillis === 'number' ? attributes.durationInMillis : 0,
-    // Apple omits contentRating on unrated tracks; omission is not evidence of "clean".
-    explicit: attributes.contentRating === 'explicit' ? true : attributes.contentRating === 'clean' ? false : null,
-    isrc: typeof attributes.isrc === 'string' && ISRC.test(attributes.isrc.toUpperCase()) ? attributes.isrc.toUpperCase() : undefined,
+    id: link.id, title: song.trackName, artist: song.artistName,
+    album: typeof song.collectionName === 'string' ? song.collectionName : '',
+    durationMs: typeof song.trackTimeMillis === 'number' ? song.trackTimeMillis : 0,
+    // Album ratings are not track evidence. iTunes does not supply recording ISRCs.
+    explicit: song.trackExplicitness === 'explicit' ? true
+      : song.trackExplicitness === 'cleaned' || song.trackExplicitness === 'notExplicit' ? false : null,
     url: link.url,
-    artwork: safeArtwork(typeof rawArtwork === 'string' ? rawArtwork.replace('{w}', '300').replace('{h}', '300') : undefined),
+    artwork: safeArtwork(song.artworkUrl100),
   };
 }
 
@@ -273,10 +249,9 @@ export async function resolveSong(input: string, token: string, spotifyClient: C
     const selected = { ...source, evidence: ['direct_spotify_id', 'playable', 'not_relinked'] };
     return { source, candidates: [selected], selected, confidence: 'exact' };
   }
-  const source = await appleSong(link);
+  const source = await itunesSong(link);
   if (!source) return { source: unavailableSource(link), candidates: [], confidence: 'no_match' };
   const tracks: SpotifyTrack[] = [];
-  if (source.isrc) tracks.push(...await spotifyClient.search(token, `isrc:${source.isrc}`));
   // Quote boundaries and field operators cannot come from provider metadata.
   const searchText = (text: string) => normalized(text).slice(0, 250);
   tracks.push(...await spotifyClient.search(token, `track:"${searchText(source.title)}" artist:"${searchText(source.artist)}"`));

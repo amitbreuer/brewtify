@@ -42,8 +42,10 @@ Required before real pilot traffic:
   scope remain compatible until revoked or reauthorized.
   The Premium checkbox is an explicit requirement, not proof from a removed
   profile property. Only an explicit provider Premium error is labeled Premium.
-- Apple Music developer team ID, key ID and ES256 signing private key. No
-  Music User Token, Apple ID or guest provider authorization is used.
+- Free iTunes Store exact-ID lookup reachable from the service for supported
+  Apple Music song links. No Apple Developer membership, keys, tokens, Apple ID
+  or guest provider authorization is required. Coverage is not all Apple Music;
+  verify the intended storefront and review the matching limitations below.
 - PostgreSQL migrations, direct/session-pinned connections supporting **session
   advisory locks** (do not use PgBouncer/Neon transaction pooling for Party).
 - Cloud Tasks queue, runtime enqueue/actAs grants, OIDC identity and audience,
@@ -106,10 +108,11 @@ created first in a newly provisioned project.
 Take environment values from the Terraform `party_environment` output and
 `projects/api/.env.party.example`. Configure these on the isolated Cloud Run
 revision, with `PARTY_ENABLED=false`. Bind `PARTY_IDENTITY_KEY` (independent random
-32-byte hex), `APPLE_MUSIC_PRIVATE_KEY`, and the host allowlist through Secret
-Manager. The Apple team/key IDs may be environment values. Existing encryption
+32-byte hex) and the host allowlist through Secret Manager. Existing encryption
 and Spotify client configuration are reused; Library token rows are not.
-Keep the Apple PEM server-side; never use a `VITE_` variable for secrets.
+Apple team/key IDs, signing PEMs and developer tokens are no longer used and
+can be removed from Party configuration when retiring the old revision.
+Never use a `VITE_` variable for secrets.
 
 Use explicit Cloud Run `--update-env-vars` / `--update-secrets` for these settings,
 not replacement of existing Library configuration. The existing deploy action's
@@ -176,6 +179,43 @@ retention in the deployment runbook. Physical deletion does **not** synchronousl
 erase managed backups. Restore procedures must immediately run expiry cleanup.
 
 ## Delivery and failure handling
+
+### Apple Music links via free iTunes Store lookup
+
+Apple Music remains an accepted **link format**, not the catalog API used.
+`music.apple.com/<country>/song/.../<id>` and album links with a single `?i=<track-id>`
+are resolved only through `https://itunes.apple.com/lookup?id=<track-id>&country=<country>`.
+The original path storefront wins over unrelated query parameters. The exact
+safe-integer track ID must be returned as a song; albums, different IDs and
+malformed responses are errors. A valid empty result (or 404) is unavailable.
+There is no alternate-country, full-album, URL-title guessing, or paid API fallback.
+Use a Spotify song link if the recording is missing from that iTunes storefront.
+The source link stays an Apple Music song link, not a provider-returned URL.
+
+iTunes supplies title, the combined artist string, album, duration and track
+explicitness (`explicit`, `cleaned`, `notExplicit`); album explicitness is ignored.
+Missing optional metadata stays unknown. Artwork is restricted to safe HTTPS
+CDN URLs. iTunes does **not** supply ISRCs. Matching still checks full title/artist,
+versions, duration and explicitness without fuzzy scoring. When Spotify supplies
+an ISRC but iTunes does not, even a unique otherwise-identical candidate needs a
+host version choice. This increases review frequency and can reduce match coverage
+(including differently formatted multi-artist credits). No recording safety rule
+is relaxed. Choosing a version in an auto room queues it without another approval;
+direct Spotify links retain their existing automatic path.
+
+The [archived iTunes API guidance](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html)
+quotes approximately 20 requests/minute, subject to change. Existing shared
+database submission throttles and durable jobs remain, but **no global iTunes
+quota or lookup cache is implemented**. Repeated lookups and different service
+instances can collectively exceed that estimate; do not claim quota compliance
+or widen the private pilot without measuring traffic and addressing that limit.
+Each resolve attempt makes one lookup. Explicit 429s retain `Retry-After` in the
+durable job (60 seconds if absent/invalid), with `itunes_rate_limited` receipts;
+network/5xx/invalid-response errors follow bounded read retries. No in-process
+retry, sleep, or silent empty result hides an outage. Transport remains fixed-host,
+redirect-rejecting, DNS-vetted, limited to 1 MiB and an 8-second deadline.
+
+### Queue delivery
 
 Committed submissions and approvals create database outbox jobs. Scheduler
 dispatches bounded named Cloud Tasks batches and repairs stale dispatch records.
@@ -258,3 +298,13 @@ The PostgreSQL suite runs all four migrations and verifies zero Prisma schema dr
 Docker image execution was not available because the local Docker daemon was not
 running. No real provider authorization, Telegram client session, Cloud Tasks
 dispatch, production migration, or Spotify queue write was performed.
+
+The free iTunes replacement (2026-09-23) passed all five workspace builds,
+40 provider/transport tests, 20 catalog/config/Telegram tests, 17 native PostgreSQL
+integration scenarios (including durable iTunes retries and host version choice),
+18 frontend tests and focused frontend lint. Two public IL-storefront lookups
+through the real adapter verified Ensalada and Shivers metadata without contacting
+Spotify. The local preview responded over HTTP, but browser regression checks
+were blocked before loading a page: system Chrome timed out on launch and cached
+headless Chromium crashed with SIGSEGV. No browser pass is claimed for this change.
+These checks do not establish live Spotify, signed Telegram or cloud readiness.

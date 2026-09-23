@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PartyClient, PartyError } from '../src/features/party/api.ts';
+import { errorText, PartyClient, PartyError } from '../src/features/party/api.ts';
 
 test('Party bootstrap uses only signed initData; mutations use same-origin cookies and CSRF', async (t) => {
   const calls = [];
@@ -43,8 +43,20 @@ test('failed mutations are never automatically replayed', async (t) => {
     calls++;
     throw new TypeError('Network unavailable');
   });
+
   await assert.rejects(new PartyClient().request('/rooms/room/requests/id/action', { action: 'retry', confirmDuplicateRisk: true }), PartyError);
   assert.equal(calls, 1);
+});
+
+test('iTunes errors display catalog-specific guidance rather than Spotify or Telegram authentication', () => {
+  for (const [code, status] of [
+    ['itunes_rejected', 401], ['itunes_unavailable', 503], ['itunes_invalid_response', 503],
+    ['itunes_rate_limited', 429],
+  ]) {
+    const message = errorText(new PartyError('Raw catalog error', code, status, 75_000));
+    assert.match(message, /iTunes Store/);
+    assert.doesNotMatch(message, /session expired|reconnect|credentials|Raw catalog error/i);
+  }
 });
 
 test('reload restores its cookie session without replaying signed launch data', async (t) => {
