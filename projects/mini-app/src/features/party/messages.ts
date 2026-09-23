@@ -9,7 +9,7 @@ const messages: Record<string, string> = {
   insufficient_scope: 'Spotify playback permission is missing. The host needs to reconnect Party Spotify and grant playback access.',
   device_unavailable: 'Spotify has no available active playback. The host should open Spotify, start playing music, then tap Try again.',
   rate_limited: 'Spotify is rate-limiting requests. Approved requests are waiting for a safe retry.',
-  forbidden: 'Spotify denied playback access. Check the pilot allowlist and device restrictions; this does not necessarily mean Premium is missing.',
+  forbidden: 'Spotify denied playback access. Check Spotify app access and device restrictions; this does not necessarily mean Premium is missing.',
   itunes_rate_limited: 'iTunes Store is limiting song lookups. Matching will wait before retrying.',
   itunes_unavailable: 'iTunes Store lookup is temporarily unavailable. Try again later; this is not a confirmed no-match.',
   itunes_invalid_response: 'iTunes Store returned unexpected song metadata. The host can retry later or use a Spotify song link.',

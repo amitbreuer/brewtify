@@ -172,7 +172,7 @@ export default function Party({ config, initialSecret, onInviteConsumed }: {
           <section className="party-card party-stack">
             <h2>Bring everyone’s songs together</h2>
             <p>Friends join, paste Spotify or Apple Music song links, and add songs straight to your Spotify queue.</p>
-            <p className="party-muted">Private pilot · Spotify hosts must be allowlisted. Party needs separate playback permission, not your Library login. Rooms expire after 12 hours.</p>
+            <p className="party-muted">Host with a Spotify account authorized for this app. Spotify app access restrictions still apply. Party needs separate playback permission, not your Library login. Rooms expire after 12 hours.</p>
             {!session.hostConnected && <label className="party-check"><input type="checkbox" checked={premium} onChange={(event) => setPremium(event.target.checked)} />I have Spotify Premium and will host playback.</label>}
             <button disabled={busy || (!premium && !session.hostConnected) || authStatus === 'pending'} onClick={() => void start()}>Start party</button>
             {authStatus === 'pending' && <button className="party-secondary" onClick={() => setView('connecting')}>Authorization in progress</button>}

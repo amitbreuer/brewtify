@@ -39,9 +39,9 @@ files. Terraform is a reviewed provisioning artifact, **not an applied deploymen
 
 Required before real pilot traffic:
 
-- A Spotify Development Mode host allowlist (check the actual app's current
-  authorization allocation, commonly five), a deliberately selected Premium
-  host, and the exact dedicated callback URI registered on the app.
+- Spotify app access for the intended hosts (check the actual app's current
+  Development Mode access restrictions and authorization allocation), a deliberately
+  selected Premium host, and the exact dedicated callback URI registered on the app.
 - Minimal-scope `/me` identity, host-token catalog/playability/relinking,
   search (limit ten), and active-playback queue access verified with that app.
   Party now requests only `user-modify-playback-state`; device discovery and its
@@ -66,7 +66,10 @@ Required before real pilot traffic:
   enqueues a surprise eligibility probe.
 
 Missing configuration returns an actionable error; it is never a catalog no-match
-or an authentication bypass. The server must not be opened to public host signup.
+or an authentication bypass. Brewtify has no host allowlist: when Party is enabled,
+any account that can authorize the Spotify app can host after confirming Premium.
+Spotify's provider-owned access restrictions still apply; removing Brewtify's list
+does not expand the app's Spotify access or enable Party in production.
 
 ## Database migration
 
@@ -115,7 +118,7 @@ created first in a newly provisioned project.
 Take environment values from the Terraform `party_environment` output and
 `projects/api/.env.party.example`. Configure these on the isolated Cloud Run
 revision, with `PARTY_ENABLED=false`. Bind `PARTY_IDENTITY_KEY` (independent random
-32-byte hex) and the host allowlist through Secret Manager. Existing encryption
+32-byte hex) through Secret Manager. No host-list configuration is required. Existing encryption
 and Spotify client configuration are reused; Library token rows are not.
 Apple team/key IDs, signing PEMs and developer tokens are no longer used and
 can be removed from Party configuration when retiring the old revision.
@@ -156,6 +159,8 @@ Cancellation/replay/expiry require a new explicit Start. Connected credentials
 not yet attached to a room expire after 30 minutes. Active rooms have a fixed
 12-hour TTL. Creating a room again for its verified owner returns the existing
 room and invitation without extending the TTL or duplicating the room.
+Spotify profile identity and account locks still enforce one active room per account;
+opening host access does not relax credential isolation, throttles or the 12-hour TTL.
 
 Party token refresh uses database serialization and preserves rotated refresh
 tokens. Explicit revocation deletes Party credentials, not Library tokens.
@@ -173,7 +178,7 @@ caller-controlled forwarded headers; behind
 Cloud Run that may be a shared proxy, so its broad ceiling is intentionally high.
 Verified-principal/session/room throttles supply the more selective controls.
 Do not blindly enable Express `trust proxy=true`. Review trusted edge topology
-and ingress-level abuse controls before widening the private pilot.
+and ingress-level abuse controls before increasing traffic.
 
 The maintenance job deletes expired rooms and all linked requests/candidates/jobs/
 attempts/memberships in batches of 100, and expired sessions/auth flows/throttles/
@@ -216,7 +221,7 @@ quotes approximately 20 requests/minute, subject to change. Existing shared
 database submission throttles and durable jobs remain, but **no global iTunes
 quota or lookup cache is implemented**. Repeated lookups and different service
 instances can collectively exceed that estimate; do not claim quota compliance
-or widen the private pilot without measuring traffic and addressing that limit.
+or increase traffic without measuring it and addressing that limit.
 Each resolve attempt makes one lookup. Explicit 429s retain `Retry-After` in the
 durable job (60 seconds if absent/invalid), with `itunes_rate_limited` receipts;
 network/5xx/invalid-response errors follow bounded read retries. No in-process
@@ -323,7 +328,7 @@ a browser-local transport that never calls Party APIs or providers. Production
 builds exclude this demo. Production party routes have no fixture identity. Real Telegram
 tests require an HTTPS staging deployment/test bot, signed fresh launch data,
 secure-cookie behavior, the external browser with a distinct cookie jar and the
-actual allowlisted host. Record those results separately before enabling the pilot.
+actual Spotify-authorized Premium host. Record those results separately before enabling the pilot.
 
 With the visual fixture running at `http://127.0.0.1:5197` and Google Chrome
 installed, `npm run test:party-browser` verifies mobile layout, no Library fetch

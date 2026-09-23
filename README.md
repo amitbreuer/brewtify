@@ -25,6 +25,8 @@ delete and regenerate the lockfile or upgrade packages as a first response.
 The existing Telegram Mini App includes a feature-gated cross-service Party Queue.
 See [setup, privacy, deployment and release gates](docs/party-queue.md) before enabling
 `PARTY_ENABLED`. Library credentials and playback-only Party authorization are separate.
+There is no Brewtify host allowlist. Hosts need Spotify app access, playback
+authorization and Premium; Spotify's Development Mode restrictions still apply.
 
 ## iTunes catalog evaluation CLI
 

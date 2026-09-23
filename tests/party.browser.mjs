@@ -417,6 +417,9 @@ test('hosts go from authorization directly to a room, resume safely, and can ret
       });
       await page.goto(`${base}/app/?section=party`);
       if (scenario === 'new-host' || scenario === 'authorization-failure') {
+        await page.getByText('Host with a Spotify account authorized for this app.', { exact: false }).waitFor();
+        assert.equal(await page.getByText(/allowlisted|private pilot/i).count(), 0);
+        assert.equal(await page.getByRole('button', { name: 'Start party', exact: true }).isDisabled(), true);
         await page.getByRole('checkbox', { name: 'I have Spotify Premium and will host playback.' }).check();
         await page.getByRole('button', { name: 'Start party', exact: true }).click();
       } else if (scenario === 'reconnect') {

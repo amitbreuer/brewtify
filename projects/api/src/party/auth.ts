@@ -281,18 +281,6 @@ export async function finishAuthorization(
         'Spotify did not return a refresh token.'
       );
     const profile = await spotify().profile(tokens.accessToken);
-    if (
-      !required('PARTY_HOST_ALLOWLIST')
-        .split(',')
-        .map((value) => value.trim())
-        .includes(profile.id)
-    ) {
-      throw new PartyError(
-        403,
-        'host_not_allowlisted',
-        'This Spotify account is not in the private host pilot.'
-      );
-    }
     const account = identity(`spotify:${profile.id}`);
     await hostLock(`principal:${flow.principal}`, () =>
       hostLock(account, (client) =>
