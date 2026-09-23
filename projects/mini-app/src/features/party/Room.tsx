@@ -132,17 +132,19 @@ export function Room({ client, initialRoom, onRoomChange, onReconnect }: {
       </section>}
       {error && <div className="party-error" role="alert">{error}</div>}
       {room.isHost && !inactive && (
-        <section className="party-card party-stack">
-          <h2>Invite friends</h2>
-          {qr && <img className="party-qr" src={qr} alt="QR code opening this party invitation in Telegram" />}
-          {inviteUrl ? (
-            <>
-              <label className="sr-only" htmlFor="party-invite-copy">Telegram invitation</label>
-              <input id="party-invite-copy" value={inviteUrl} readOnly onFocus={(event) => event.target.select()} />
-              <button className="party-secondary" onClick={() => void copyInvite()}>{copied ? 'Copied!' : 'Copy invite'}</button>
-            </>
-          ) : <p>Invitation unavailable. Reopen the room to retry.</p>}
-        </section>
+        <details className="party-card">
+          <summary>Invite friends</summary>
+          <div className="party-stack">
+            {qr && <img className="party-qr" src={qr} alt="QR code opening this party invitation in Telegram" />}
+            {inviteUrl ? (
+              <>
+                <label className="sr-only" htmlFor="party-invite-copy">Telegram invitation</label>
+                <input id="party-invite-copy" value={inviteUrl} readOnly onFocus={(event) => event.target.select()} />
+                <button className="party-secondary" onClick={() => void copyInvite()}>{copied ? 'Copied!' : 'Copy invite'}</button>
+              </>
+            ) : <p>Invitation unavailable. Reopen the room to retry.</p>}
+          </div>
+        </details>
       )}
       {!inactive && (
         <SongSearch key={`${room.id}:${room.status}`} client={client} path={path} enabled={room.status === 'open'} requests={requests} />

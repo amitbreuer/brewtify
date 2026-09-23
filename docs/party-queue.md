@@ -239,6 +239,18 @@ all existing version/playability checks and returns `{ candidates, expiresAt }`,
 with a `selectionToken` on each candidate. It does not store search drafts or
 publish search results in the room feed.
 
+Canonical Spotify track URLs, share query parameters, and localized `intl-*`
+track paths normalize to the same track ID. Direct lookup and pre-delivery
+revalidation both request `market=from_token`; search also uses that host market.
+This requests positive playability evidence rather than assuming an omitted
+`is_playable` means playable. Relinking, restrictions, unknown playability, and
+recording drift still prevent delivery. A passing mocked flow is not live
+Spotify acceptance; previously unavailable requests are not automatically retried.
+
+The host's **Invite friends** card starts collapsed. Click or keyboard-activate
+its native disclosure to reveal the same QR code, selectable invitation URL,
+and copy action. Guests and ended parties do not show invitation controls.
+
 Each domain-separated HMAC-signed capability binds the session, room, canonical
 source, exact candidate metadata, common search nonce and expiry (at most five
 minutes, bounded by session/room expiry). Tokens contain no host credentials and

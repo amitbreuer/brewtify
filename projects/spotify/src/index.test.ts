@@ -251,7 +251,8 @@ test('minimal profile, devices, bounded search, market/relinking evidence preser
   ];
   t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = new URL(String(input));
-    assert.equal(url.searchParams.has('market'), false);
+    assert.equal(url.searchParams.get('market'),
+      url.pathname.endsWith('/search') || url.pathname.includes('/tracks/') ? 'from_token' : null);
     assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer token');
     if (url.pathname.endsWith('/search')) assert.equal(url.searchParams.get('limit'), '10');
     return json(responses.shift());
@@ -263,6 +264,50 @@ test('minimal profile, devices, bounded search, market/relinking evidence preser
   assert.deepEqual(result.restrictions, { reason: 'market' });
   assert.equal(result.is_playable, true);
   assert.equal((await client().search('token', 'isrc:USABC1234567')).length, 1);
+});
+
+test('search and direct metadata request host-market playability rather than infer it', async t => {
+  for (const recording of [
+    { ...track(), name: 'Tron', artists: [{ name: 'Foals' }], album: { name: 'Antidotes' },
+      duration_ms: 290840, external_ids: { isrc: 'GBVKZ0725315' } },
+    { ...track(), name: 'Freaking Out the Neighborhood', artists: [{ name: 'Mac DeMarco' }],
+      album: { name: '2' }, duration_ms: 173888, external_ids: { isrc: 'QMMZN1200048' } },
+  ]) {
+    const calls: URL[] = [];
+    const mocked = t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
+      const url = new URL(String(input));
+      calls.push(url);
+      if (url.pathname.endsWith('/search')) return json({ tracks: { items: [recording] } });
+      // Without market, track metadata omits the positive playability evidence.
+      return json({ ...recording, is_playable: url.searchParams.has('market') ? true : undefined });
+    });
+    const [found] = await client().search('token', `isrc:${recording.external_ids.isrc}`);
+    assert.equal(trackEligibility(found).eligible, true);
+    const fetched = await client().track('token', found.id);
+    assert.doesNotThrow(() => assertSelectedRecording(fetched, {
+      id: found.id, title: found.name, artist: found.artists[0].name, album: found.album.name,
+      durationMs: found.duration_ms!, explicit: found.explicit!, isrc: found.external_ids?.isrc,
+      url: `https://open.spotify.com/track/${found.id}`, evidence: ['playable'],
+    }));
+    assert.equal(calls.length, 2);
+    for (const url of calls) assert.equal(url.searchParams.get('market'), 'from_token');
+    mocked.mock.restore();
+  }
+});
+
+test('host-market responses still reject unknown, restricted, local and relinked tracks', async t => {
+  for (const variant of [
+    { is_playable: undefined }, { is_playable: false }, { restrictions: { reason: 'market' } },
+    { is_local: true }, { linked_from: { id: OTHER } }, { id: OTHER, linked_from: { id: ID } },
+  ]) {
+    const mocked = t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
+      assert.equal(new URL(String(input)).searchParams.get('market'), 'from_token');
+      return json({ ...track(), ...variant });
+    });
+    const result = await client().track('token', ID);
+    assert.throws(() => assertTrackEligible(result, ID), { code: 'track_unavailable' });
+    mocked.mock.restore();
+  }
 });
 
 test('malformed provider data is not converted to empty catalog results', async t => {
