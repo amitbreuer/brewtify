@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, verify } from 'node:crypto';
 import { test } from 'node:test';
 import type { PartyTrack } from '@brewtify/shared';
-import { SpotifyError, type SpotifyTrack } from '@brewtify/spotify';
+import { PROVIDER_BODY_LIMIT, SpotifyError, type SpotifyTrack } from '@brewtify/spotify';
 import {
   CatalogError, matchCandidates, parseSongLink, resolveSong, type CatalogSpotifyClient,
 } from './catalog';
@@ -52,6 +51,8 @@ test('parser rejects hostile, normalized, unsupported, ambiguous or malformed in
     'https://music.apple.com/us/song/a%5cb/123', 'https://music.apple.com/us/song/%00/123',
     'https://music.apple.com/us/song/%GG/123', 'https://music.apple.com/USA/song/123',
     'https://music.apple.com/us/song/0', 'https://music.apple.com/us/song/123/extra',
+    'https://music.apple.com/us/song/9007199254740992',
+    'https://music.apple.com/us/album/a/456?i=99999999999999999999',
     'https://music.apple.com/us/playlist/foo/123', 'https://music.apple.com/us/song/123#fragment',
     `http://open.spotify.com/track/${ID}`, `https://open.spotify.com.evil.example/track/${ID}`,
     `https://evil.example@open.spotify.com/track/${ID}`, `https://open.spotify.com@evil.example/track/${ID}`,
@@ -159,91 +160,95 @@ test('Spotify outages and auth failures propagate, only explicit missing track b
   }))).confidence, 'no_match');
 });
 
-const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-const withAppleConfiguration = (t: { after: (fn: () => void) => void }) => {
-  const names = ['APPLE_MUSIC_TEAM_ID', 'APPLE_MUSIC_KEY_ID', 'APPLE_MUSIC_PRIVATE_KEY'];
-  const original = names.map(name => process.env[name]);
-  process.env.APPLE_MUSIC_TEAM_ID = 'ABCDEFGHIJ';
-  process.env.APPLE_MUSIC_KEY_ID = '0123456789';
-  process.env.APPLE_MUSIC_PRIVATE_KEY = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
-  t.after(() => names.forEach((name, index) => {
-    if (original[index] === undefined) delete process.env[name];
-    else process.env[name] = original[index];
-  }));
-};
-const appleBody = (attributes: Record<string, unknown> = {}) => ({
-  data: [{ id: '123', type: 'songs', attributes: {
-    name: 'The Song', artistName: 'The Artist', albumName: 'The Album',
-    durationInMillis: 200_000, contentRating: 'clean', isrc: 'USABC1234567',
-    artwork: { url: 'https://is1-ssl.mzstatic.com/image/{w}x{h}bb.jpg' },
+const itunesBody = (attributes: Record<string, unknown> = {}) => ({
+  resultCount: 1,
+  results: [{
+    wrapperType: 'track', kind: 'song', trackId: 123,
+    trackName: 'The Song', artistName: 'The Artist', collectionName: 'The Album',
+    trackTimeMillis: 200_000, trackExplicitness: 'notExplicit',
+    artworkUrl100: 'https://is1-ssl.mzstatic.com/image/100x100bb.jpg',
     ...attributes,
-  } }],
+  }],
 });
 
-test('Apple adapter signs official ES256 JWT, never sends user token, searches ISRC then constrained title', async t => {
-  withAppleConfiguration(t);
+test('iTunes uses exact ID and original storefront without credentials; missing ISRC requires host choice', async t => {
+  for (const name of ['APPLE_MUSIC_TEAM_ID', 'APPLE_MUSIC_KEY_ID', 'APPLE_MUSIC_PRIVATE_KEY']) {
+    const original = process.env[name];
+    delete process.env[name];
+    t.after(() => {
+      if (original !== undefined) process.env[name] = original;
+    });
+  }
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = new URL(String(input));
     calls++;
-    assert.equal(url.toString(), 'https://api.music.apple.com/v1/catalog/us/songs/123');
+    assert.equal(url.toString(), 'https://itunes.apple.com/lookup?id=123&country=il');
     assert.equal(init?.redirect, 'manual');
-    const headers = init?.headers as Record<string, string>;
-    assert.equal(headers['Music-User-Token'], undefined);
-    const jwt = headers.Authorization.slice(7).split('.');
-    const head = JSON.parse(Buffer.from(jwt[0], 'base64url').toString());
-    const claims = JSON.parse(Buffer.from(jwt[1], 'base64url').toString());
-    assert.equal(head.alg, 'ES256');
-    assert.equal(head.kid, '0123456789');
-    assert.equal(claims.iss, 'ABCDEFGHIJ');
-    assert.equal(claims.exp - claims.iat, 300);
-    assert.equal(verify('sha256', Buffer.from(jwt.slice(0, 2).join('.')),
-      { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(jwt[2], 'base64url')), true);
-    return new Response(JSON.stringify(appleBody()));
+    assert.deepEqual(init?.headers, { Accept: 'application/json' });
+    return new Response(JSON.stringify(itunesBody()));
   });
   const queries: string[] = [];
-  const result = await resolveSong('https://music.apple.com/us/album/album/456?i=123', 'host-token', spotify({
-    search: async (token, query) => { assert.equal(token, 'host-token'); queries.push(query); return [track()]; },
-  }));
-  assert.equal(result.confidence, 'exact');
-  assert.deepEqual(queries, ['isrc:USABC1234567', 'track:"the song" artist:"the artist"']);
-  assert.equal(result.source.artwork, 'https://is1-ssl.mzstatic.com/image/300x300bb.jpg');
-  assert.equal(calls, 1);
+  for (const input of [
+    'https://music.apple.com/il/album/wrong-url-title/456?i=123&country=us',
+    'https://music.apple.com/il/song/wrong-url-title/123',
+  ]) {
+    const result = await resolveSong(input, 'host-token', spotify({
+      search: async (token, query) => { assert.equal(token, 'host-token'); queries.push(query); return [track()]; },
+    }));
+    assert.equal(result.confidence, 'ambiguous');
+    assert.equal(result.selected, undefined);
+    assert.equal(result.source.isrc, undefined);
+    assert.equal(result.source.url, 'https://music.apple.com/il/song/123');
+    assert.equal(result.source.artwork, 'https://is1-ssl.mzstatic.com/image/100x100bb.jpg');
+    assert.deepEqual(result.candidates[0].evidence, [
+      'same_title_and_artist', 'playable', 'duration_within_2000ms', 'same_explicitness', 'same_album', 'incomplete_evidence',
+    ]);
+  }
+  assert.deepEqual(queries, Array(2).fill('track:"the song" artist:"the artist"'));
+  assert.equal(calls, 2);
 });
 
-test('Apple missing/invalid credentials are configuration errors, never empty results', async t => {
-  withAppleConfiguration(t);
-  delete process.env.APPLE_MUSIC_TEAM_ID;
-  await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()),
-    (error: unknown) => error instanceof CatalogError && error.code === 'apple_configuration');
-  process.env.APPLE_MUSIC_TEAM_ID = 'ABCDEFGHIJ';
-  process.env.APPLE_MUSIC_PRIVATE_KEY = 'invalid';
-  await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()),
-    (error: unknown) => error instanceof CatalogError && error.code === 'apple_configuration');
-});
-
-test('Apple omitted rating/duration are unknown, not fabricated clean/playtime evidence', async t => {
-  withAppleConfiguration(t);
-  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(appleBody({
-    contentRating: undefined, durationInMillis: undefined,
+test('iTunes missing metadata remains unknown; collection rating and unsolicited ISRC are not track evidence', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(itunesBody({
+    trackExplicitness: undefined, trackTimeMillis: undefined, collectionName: undefined,
+    collectionExplicitness: 'explicit', isrc: 'USABC1234567',
   }))));
   const result = await resolveSong('https://music.apple.com/us/song/123', 'host', spotify());
   assert.equal(result.source.explicit, null);
   assert.equal(result.source.durationMs, 0);
+  assert.equal(result.source.album, '');
+  assert.equal(result.source.isrc, undefined);
   assert.equal(result.confidence, 'ambiguous');
   assert.equal(result.selected, undefined);
 });
 
-test('Apple status/error mapping and malformed payloads remain distinct from no match', async t => {
-  withAppleConfiguration(t);
+test('iTunes preserves combined artists, version title, duration and track-specific explicitness', async t => {
+  for (const [rating, explicit] of [['explicit', true], ['cleaned', false], ['notExplicit', false]] as const) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(itunesBody({
+      trackName: 'Song (Live)', artistName: 'Artist A, Artist B & Artist C', collectionName: 'Album (Remastered)',
+      trackTimeMillis: 226547, trackExplicitness: rating, collectionExplicitness: 'explicit',
+    }))));
+    const result = await resolveSong('https://music.apple.com/us/song/123', 'host', spotify());
+    assert.equal(result.source.title, 'Song (Live)');
+    assert.equal(result.source.artist, 'Artist A, Artist B & Artist C');
+    assert.equal(result.source.album, 'Album (Remastered)');
+    assert.equal(result.source.durationMs, 226547);
+    assert.equal(result.source.explicit, explicit);
+    assert.equal(result.confidence, 'no_match', 'different version cannot become a title-only match');
+    mocked.mock.restore();
+  }
+});
+
+test('iTunes status/error mapping and malformed payloads remain distinct from no match', async t => {
   const cases = [
-    { status: 401, code: 'apple_unauthorized' }, { status: 403, code: 'apple_unauthorized' },
-    { status: 429, code: 'apple_rate_limited' }, { status: 503, code: 'apple_unavailable' },
-    { status: 302, code: 'apple_invalid_response' }, { status: 400, code: 'apple_rejected' },
-    { status: 200, code: 'apple_invalid_response' },
+    { status: 401, code: 'itunes_rejected' }, { status: 403, code: 'itunes_rejected' },
+    { status: 429, code: 'itunes_rate_limited' }, { status: 503, code: 'itunes_unavailable' },
+    { status: 302, code: 'itunes_invalid_response' }, { status: 400, code: 'itunes_rejected' },
+    { status: 200, code: 'itunes_invalid_response' }, { status: 204, code: 'itunes_rejected' },
   ];
   for (const fixture of cases) {
-    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response('{}', {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response(fixture.status === 204 ? null : '{}', {
       status: fixture.status, headers: { 'Retry-After': '17', Location: 'http://127.0.0.1/' },
     }));
     await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()), (error: unknown) => {
@@ -256,21 +261,91 @@ test('Apple status/error mapping and malformed payloads remain distinct from no 
   }
   const network = t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
   await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()),
-    (error: unknown) => error instanceof CatalogError && error.code === 'apple_unavailable');
+    (error: unknown) => error instanceof CatalogError && error.code === 'itunes_unavailable');
   network.mock.restore();
-  t.mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 404 }));
-  assert.equal((await resolveSong('https://music.apple.com/us/song/123', 'host', spotify())).confidence, 'no_match');
 });
 
-test('Apple returned ID mismatch and Spotify search outage are never no-match', async t => {
-  withAppleConfiguration(t);
-  const body = appleBody();
-  body.data[0].id = '456';
-  const response = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(body)));
-  await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()),
-    (error: unknown) => error instanceof CatalogError && error.code === 'apple_invalid_response');
-  response.mock.restore();
-  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(appleBody())));
+test('iTunes no-result never falls back to another country, album or guessed URL title', async t => {
+  for (const status of [200, 404]) {
+    let calls = 0;
+    const mocked = t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
+      calls++;
+      assert.equal(String(input), 'https://itunes.apple.com/lookup?id=123&country=il');
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status });
+    });
+    const result = await resolveSong('https://music.apple.com/il/album/title/456?i=123', 'host', spotify({
+      search: async () => assert.fail('No metadata, no Spotify search'),
+    }));
+    assert.equal(result.confidence, 'no_match');
+    assert.equal(result.selected, undefined);
+    assert.equal(calls, 1);
+    mocked.mock.restore();
+  }
+});
+
+test('iTunes malformed, mismatched and non-song results are rejected rather than cached or matched', async t => {
+  const bodies = [
+    {}, null, [], { results: [] }, { resultCount: '0', results: [] },
+    { resultCount: 1, results: [] }, { resultCount: 0, results: itunesBody().results },
+    { resultCount: 2, results: [...itunesBody().results, ...itunesBody().results] },
+    { resultCount: 1, results: [null] },
+    ...[
+      { trackId: 456 }, { trackId: '123' }, { trackId: 123.5 }, { trackId: 9007199254740992 },
+      { kind: 'music-video' }, { wrapperType: 'collection' }, { trackName: '' },
+      { trackName: ' ' }, { artistName: null }, { collectionName: null },
+      { trackTimeMillis: -1 }, { trackTimeMillis: 0 }, { trackTimeMillis: 1.5 }, { trackTimeMillis: '200000' },
+      { trackExplicitness: 'clean' }, { trackExplicitness: null }, { trackExplicitness: ['explicit'] },
+    ].map(attributes => itunesBody(attributes)),
+  ];
+  for (const body of bodies) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(body)));
+    await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify({
+      search: async () => assert.fail('Malformed data must not reach matching'),
+    })), (error: unknown) => error instanceof CatalogError && error.code === 'itunes_invalid_response');
+    mocked.mock.restore();
+  }
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(itunesBody())));
+  assert.equal((await resolveSong('https://music.apple.com/us/song/123', 'host', spotify())).source.title, 'The Song');
+});
+
+test('iTunes discards unsafe artwork without trusting trackViewUrl or losing song metadata', async t => {
+  for (const artworkUrl100 of [
+    'http://is1-ssl.mzstatic.com/a.jpg', 'https://mzstatic.com.evil.test/a.jpg',
+    'https://user:pass@is1-ssl.mzstatic.com/a.jpg', 'https://127.0.0.1/a.jpg',
+    'https://is1-ssl.mzstatic.com:8443/a.jpg', 'javascript:alert(1)', 123,
+  ]) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(itunesBody({
+      artworkUrl100, trackViewUrl: 'http://127.0.0.1/',
+    }))));
+    const result = await resolveSong('https://music.apple.com/us/song/123', 'host', spotify());
+    assert.equal(result.source.artwork, undefined);
+    assert.equal(result.source.url, 'https://music.apple.com/us/song/123');
+    mocked.mock.restore();
+  }
+});
+
+test('iTunes response size limits apply and non-JSON 429 retains durable retry delay', async t => {
+  for (const declared of [true, false]) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response('x'.repeat(PROVIDER_BODY_LIMIT + 1), {
+      headers: declared ? { 'content-length': String(PROVIDER_BODY_LIMIT + 1) } : {},
+    }));
+    await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()),
+      (error: unknown) => error instanceof CatalogError && error.code === 'itunes_invalid_response');
+    mocked.mock.restore();
+  }
+  for (const retry of ['17', 'invalid']) {
+    const mocked = t.mock.method(globalThis, 'fetch', async () => new Response('Too many requests', {
+      status: 429, headers: { 'Retry-After': retry },
+    }));
+    await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify()), (error: unknown) =>
+      error instanceof CatalogError && error.code === 'itunes_rate_limited'
+        && error.retryAfterSeconds === (retry === '17' ? 17 : 60));
+    mocked.mock.restore();
+  }
+});
+
+test('Spotify search outage after iTunes lookup is never no-match', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(itunesBody())));
   await assert.rejects(resolveSong('https://music.apple.com/us/song/123', 'host', spotify({
     search: async () => { throw new SpotifyError('provider_unavailable', 503); },
   })), (error: unknown) => error instanceof SpotifyError && error.code === 'provider_unavailable');

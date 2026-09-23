@@ -40,9 +40,10 @@ test('provider failures have actionable labels without telling guests to log in'
   assert.match(partyFailureMessage('device_unavailable'), /start playing music, then tap Try again/);
   assert.match(partyFailureMessage('delivery_settling'), /two-minute safety window/);
   assert.equal(partyFailureMessage('recording_changed'), 'Spotify recording details changed. Resolve the request again and approve the version before adding.');
-  for (const code of ['apple_configuration', 'apple_unauthorized', 'apple_rate_limited', 'apple_unavailable', 'apple_invalid_response', 'apple_rejected']) {
-    assert.match(partyFailureMessage(code), /Apple Music/);
+  for (const code of ['itunes_rate_limited', 'itunes_unavailable', 'itunes_invalid_response', 'itunes_rejected']) {
+    assert.match(partyFailureMessage(code), /iTunes Store/);
     assert.doesNotMatch(partyFailureMessage(code), /Party needs attention/);
+    assert.doesNotMatch(partyFailureMessage(code), /credentials|sign in|developer/i);
   }
 });
 

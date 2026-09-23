@@ -81,7 +81,7 @@ export class SpotifyError extends Error {
 const BASES = {
   spotify: 'https://api.spotify.com/v1/',
   oauth: 'https://accounts.spotify.com/api/',
-  apple: 'https://api.music.apple.com/v1/',
+  itunes: 'https://itunes.apple.com/',
 } as const;
 
 export class ProviderTransportError extends Error {
@@ -110,7 +110,7 @@ function retryAfter(value: string | null): number | undefined {
 }
 
 /**
- * Server-only, fixed-origin transport shared with the official Apple catalog.
+ * Server-only, fixed-origin transport shared with the public iTunes lookup.
  * Exactly one fetch: durable callers decide read retries and 429 scheduling.
  */
 export async function providerRequest(

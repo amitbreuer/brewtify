@@ -387,8 +387,8 @@ export async function runJob(id: string, generation: number): Promise<void> {
           error.status === 429
         ) {
           await tx.query(
-            "UPDATE party_requests SET failure_code='rate_limited' WHERE id=$1",
-            [request.id]
+            'UPDATE party_requests SET failure_code=$2 WHERE id=$1',
+            [request.id, code]
           );
           await reschedule(tx, job, error.retryAfterSeconds ?? 60);
         } else if (code === 'recording_changed') {

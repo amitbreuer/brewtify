@@ -23,9 +23,6 @@ Object.assign(process.env, {
   SPOTIFY_CLIENT_ID: 'test-client',
   PARTY_SPOTIFY_REDIRECT_URI: `${origin}/api/party/auth/callback`,
   PARTY_HOST_ALLOWLIST: 'test-spotify',
-  APPLE_MUSIC_TEAM_ID: 'test',
-  APPLE_MUSIC_KEY_ID: 'test',
-  APPLE_MUSIC_PRIVATE_KEY: 'test-not-used',
   PARTY_TASKS_PROJECT: 'test',
   PARTY_TASKS_LOCATION: 'test',
   PARTY_TASKS_QUEUE: 'test',
@@ -927,5 +924,104 @@ test('new parties auto-add unnamed guest submissions and selected versions witho
   assert.equal(selected.response.status, 200, JSON.stringify(selected.data));
   await runPending(second.data.id, 'deliver');
   assert.equal(queueCalls, before + 2, 'choosing a version does not require a second approval');
+  await call(`/rooms/${active.id}/action`, host, { action: 'close' });
+});
+
+test('iTunes retry is durable; missing ISRC needs host choice in auto rooms; outages are not no-match', async t => {
+  await authorize(host);
+  const created = await call('/rooms', host, {});
+  assert.equal(created.response.status, 201, JSON.stringify(created.data));
+  const active = created.data.room;
+  assert.equal(active.mode, 'auto');
+  const secret = new URL(created.data.inviteUrl).searchParams.get('startapp').slice(2);
+  assert.equal((await call('/join', member, { secret })).response.status, 200);
+  const originalFetch = globalThis.fetch;
+  let status = 429;
+  let lookupCalls = 0;
+  let searches = 0;
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(String(input));
+    if (url.origin === base) return originalFetch(input, options);
+    assert.equal(url.toString(), 'https://itunes.apple.com/lookup?id=1814958889&country=il');
+    assert.deepEqual(options.headers, { Accept: 'application/json' });
+    lookupCalls++;
+    return status === 200 ? Response.json({
+      resultCount: 1,
+      results: [{
+        wrapperType: 'track', kind: 'song', trackId: 1814958889,
+        trackName: track.name, artistName: 'Artist', collectionName: 'Album',
+        trackTimeMillis: track.duration_ms, trackExplicitness: 'notExplicit',
+        collectionExplicitness: 'explicit',
+      }],
+    }) : new Response('Provider unavailable', { status, headers: { 'Retry-After': '75' } });
+  });
+  t.mock.method(SpotifyClient.prototype, 'search', async (_token, query) => {
+    searches++;
+    assert.equal(query, 'track:"test song" artist:"artist"');
+    return [track];
+  });
+  const submitApple = async () => {
+    const response = await call(`/rooms/${active.id}/requests`, member, {
+      url: 'https://music.apple.com/il/album/not-trusted/1814958890?i=1814958889',
+      submissionKey: randomUUID(),
+    });
+    assert.equal(response.response.status, 202, JSON.stringify(response.data));
+    return response.data.id;
+  };
+  const id = await submitApple();
+  const before = queueCalls;
+  const started = Date.now();
+  await runPending(id, 'resolve');
+  let [job] = await store.rows("SELECT * FROM party_jobs WHERE request_id=$1 AND kind='resolve'", [id]);
+  let [request] = await store.rows('SELECT * FROM party_requests WHERE id=$1', [id]);
+  assert.equal(job.status, 'pending');
+  assert.equal(job.failures, 0);
+  assert.ok(job.due_at.getTime() >= started + 74_000);
+  assert.equal(request.status, 'pending');
+  assert.equal(request.failure_code, 'itunes_rate_limited');
+  assert.equal(lookupCalls, 1);
+  assert.equal(searches, 0);
+  assert.equal(queueCalls, before);
+  await assert.rejects(runPending(id, 'resolve'), error => error.code === 'task_not_due');
+  assert.equal(lookupCalls, 1, 'a future job must not make an early provider retry');
+
+  status = 200;
+  await store.rows('UPDATE party_jobs SET due_at=now() WHERE id=$1', [job.id]);
+  await runPending(id, 'resolve');
+  [request] = await store.rows('SELECT * FROM party_requests WHERE id=$1', [id]);
+  assert.equal(request.status, 'needs_review');
+  assert.equal(request.confidence, 'ambiguous');
+  assert.equal(request.failure_code, null);
+  assert.equal(request.source.isrc, undefined);
+  assert.equal(request.source.explicit, false);
+  assert.equal(lookupCalls, 2);
+  assert.equal(searches, 1);
+  assert.equal((await store.rows("SELECT id FROM party_jobs WHERE request_id=$1 AND kind='deliver'", [id])).length, 0);
+  assert.equal(queueCalls, before, 'otherwise-identical metadata cannot fill missing recording identity');
+  assert.equal((await call(`/rooms/${active.id}/requests/${id}/action`, member, {
+    action: 'select', candidateId: trackId,
+  })).response.status, 403);
+  const selected = await call(`/rooms/${active.id}/requests/${id}/action`, host, {
+    action: 'select', candidateId: trackId,
+  });
+  assert.equal(selected.response.status, 200, JSON.stringify(selected.data));
+  await runPending(id, 'deliver');
+  assert.equal(queueCalls, before + 1, 'host version choice queues via mocked active Spotify playback without extra approval');
+
+  status = 503;
+  const outage = await submitApple();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await store.rows('UPDATE party_jobs SET due_at=now() WHERE request_id=$1', [outage]);
+    await runPending(outage, 'resolve');
+  }
+  [job] = await store.rows("SELECT * FROM party_jobs WHERE request_id=$1 AND kind='resolve'", [outage]);
+  [request] = await store.rows('SELECT * FROM party_requests WHERE id=$1', [outage]);
+  assert.equal(job.status, 'done');
+  assert.equal(job.failures, 4);
+  assert.equal(request.status, 'failed');
+  assert.equal(request.failure_code, 'itunes_unavailable');
+  assert.equal(lookupCalls, 7, 'one lookup per bounded read attempt, without a hidden retry or fallback');
+  assert.equal(searches, 1);
+  assert.equal(queueCalls, before + 1);
   await call(`/rooms/${active.id}/action`, host, { action: 'close' });
 });

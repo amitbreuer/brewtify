@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 
-const PROVIDER_HOSTS = new Set(['api.spotify.com', 'accounts.spotify.com', 'api.music.apple.com']);
+const PROVIDER_HOSTS = new Set(['api.spotify.com', 'accounts.spotify.com', 'itunes.apple.com']);
 const deniedV4 = new BlockList();
 for (const [network, prefix] of [
   ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
