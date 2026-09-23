@@ -21,7 +21,14 @@ COPY projects/mini-app/public ./projects/mini-app/public/
 COPY projects/mini-app/dev ./projects/mini-app/dev/
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/spotify --workspace=projects/tap --workspace=projects/mini-app --include-workspace-root
+# npm can silently skip failed optional downloads; verify native build tools early.
+RUN if npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/spotify --workspace=projects/tap --workspace=projects/mini-app --include-workspace-root --include=dev --include=optional --loglevel=verbose > /tmp/npm-ci.log 2>&1 \
+    && node --input-type=module -e "await import('rolldown'); await import('@tailwindcss/oxide'); await import('lightningcss'); await import('rollup');"; then \
+      rm /tmp/npm-ci.log; \
+    else \
+      cat /tmp/npm-ci.log; \
+      exit 1; \
+    fi
 
 # Build shared package
 WORKDIR /app/projects/shared
