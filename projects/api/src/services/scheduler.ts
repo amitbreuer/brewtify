@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import { selectRandomTracks } from '@brewtify/shared';
+import { selectRandomTracks, normalizeSchedule, nextRefreshDate } from '@brewtify/shared';
 import { prisma } from './db';
 import { spotifyService } from './spotify';
 import { getAccessTokenForUser } from '../routes/auth';
@@ -97,6 +97,8 @@ async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
   const baseResult = { playlistName, userId: telegramUserId, username };
 
   try {
+    const schedule = normalizePlaylistSchedule(playlist);
+    if (!schedule) throw new Error('No refresh days selected');
     const accessToken = await getAccessTokenForUser(telegramUserId);
     if (!accessToken) {
       await markFailed(id, 'auth_expired', 'No valid token — user needs to /login again');
@@ -138,7 +140,8 @@ async function updatePlaylist(playlist: any): Promise<PlaylistUpdateResult> {
       where: { id },
       data: {
         lastUpdatedAt: new Date(),
-        nextUpdateAt: calculateNextUpdate(playlist.schedule!),
+        schedule,
+        nextUpdateAt: calculateNextUpdate(schedule),
         failureCount: 0,
         lastError: null,
         status: 'active',
@@ -190,32 +193,16 @@ async function markFailed(playlistId: string, status: string, error: string) {
   });
 }
 
-/**
- * Calculate the next update time based on the schedule string.
- * - 'daily' → tomorrow at 00:00 UTC
- * - 'weekly' → 7 days from now at 00:00 UTC
- * - 'weekly:N' → next day N (0=Sun..6=Sat) at 00:00 UTC
- */
-export function calculateNextUpdate(schedule: string): Date {
-  const now = new Date();
-  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+/** Anchor legacy weekly schedules to their existing due date before advancing them. */
+export function normalizePlaylistSchedule(playlist: {
+  schedule: string | null;
+  nextUpdateAt: Date | null;
+  lastUpdatedAt: Date | null;
+  createdAt: Date;
+}): string | null {
+  return normalizeSchedule(playlist.schedule, playlist.nextUpdateAt ?? playlist.lastUpdatedAt ?? playlist.createdAt);
+}
 
-  if (schedule === 'daily') {
-    return tomorrow;
-  }
-
-  if (schedule === 'weekly') {
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7));
-  }
-
-  if (schedule.startsWith('weekly:')) {
-    const targetDay = parseInt(schedule.split(':')[1], 10); // 0=Sun..6=Sat
-    const currentDay = now.getUTCDay();
-    let daysUntil = targetDay - currentDay;
-    if (daysUntil <= 0) daysUntil += 7; // Always schedule for next week
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntil));
-  }
-
-  // Fallback: tomorrow
-  return tomorrow;
+export function calculateNextUpdate(schedule: string, now = new Date()): Date {
+  return nextRefreshDate(schedule, now);
 }

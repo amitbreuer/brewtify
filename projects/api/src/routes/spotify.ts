@@ -3,9 +3,9 @@ import { spotifyService } from '../services/spotify';
 import { lastFmService } from '../services/lastfm';
 import { redisCacheService } from '../services/redis-cache';
 import { getAccessTokenForUser } from './auth';
-import { selectRandomTracks } from '@brewtify/shared';
+import { selectRandomTracks, normalizeSchedule } from '@brewtify/shared';
 import { prisma } from '../services/db';
-import { calculateNextUpdate, toNumberMap } from '../services/scheduler';
+import { calculateNextUpdate, normalizePlaylistSchedule, toNumberMap } from '../services/scheduler';
 import { createLogger } from '../utils/logger';
 import { getTap } from '@brewtify/tap';
 
@@ -368,6 +368,14 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
       return;
     }
 
+    let normalizedSchedule: string | null;
+    try {
+      normalizedSchedule = normalizeSchedule(schedule === undefined ? null : schedule);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid schedule' });
+      return;
+    }
+
     const token = (req as AuthenticatedRequest).spotifyToken;
     const telegramUserId = (req as AuthenticatedRequest).telegramUserId;
 
@@ -376,7 +384,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
     // Save playlist settings to database
     const user = await prisma.user.findUnique({ where: { telegramUserId } });
     if (user) {
-      const nextUpdateAt = schedule ? calculateNextUpdate(schedule) : null;
+      const nextUpdateAt = normalizedSchedule ? calculateNextUpdate(normalizedSchedule) : null;
       await prisma.playlist.upsert({
         where: { userId_spotifyPlaylistId: { userId: user.id, spotifyPlaylistId: playlist.id } },
         create: {
@@ -388,7 +396,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
           eraPreferences: eraPreferences || null,
-          schedule: schedule || null,
+          schedule: normalizedSchedule,
           nextUpdateAt,
         },
         update: {
@@ -398,7 +406,7 @@ spotifyRoutes.post('/api/playlists', async (req: Request, res: Response) => {
           weights: weights || null,
           eraPreference: eraPreference ?? 50,
           eraPreferences: eraPreferences || null,
-          schedule: schedule || null,
+          schedule: normalizedSchedule,
           nextUpdateAt,
         },
       });
@@ -467,6 +475,7 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
       return;
     }
 
+    const schedule = normalizePlaylistSchedule(dbPlaylist);
     const { artistIds, trackCount, weights: weightsJson, eraPreferences: eraPreferencesJson } = dbPlaylist;
     const weights = toNumberMap(weightsJson);
     const eraPreferences = toNumberMap(eraPreferencesJson);
@@ -492,8 +501,9 @@ spotifyRoutes.post('/api/playlists/:playlistId/update', async (req: Request, res
 
     // Update lastUpdatedAt (and recalculate nextUpdateAt if scheduled)
     const updateFields: any = { lastUpdatedAt: new Date() };
-    if (dbPlaylist.schedule) {
-      updateFields.nextUpdateAt = calculateNextUpdate(dbPlaylist.schedule);
+    if (schedule) {
+      updateFields.schedule = schedule;
+      updateFields.nextUpdateAt = calculateNextUpdate(schedule);
     }
     await prisma.playlist.update({
       where: { id: dbPlaylist.id },
@@ -597,7 +607,7 @@ spotifyRoutes.get('/api/playlists/:playlistId/settings', async (req: Request, re
       weights: dbPlaylist.weights,
       eraPreference: dbPlaylist.eraPreference,
       eraPreferences: dbPlaylist.eraPreferences,
-      schedule: dbPlaylist.schedule,
+      schedule: normalizePlaylistSchedule(dbPlaylist),
       status: dbPlaylist.status,
       lastUpdatedAt: dbPlaylist.lastUpdatedAt,
       nextUpdateAt: dbPlaylist.nextUpdateAt,
@@ -643,9 +653,14 @@ spotifyRoutes.patch('/api/playlists/:playlistId/settings', async (req: Request, 
     if (eraPreference !== undefined) updateData.eraPreference = Math.min(Math.max(eraPreference, 0), 100);
     if (eraPreferences !== undefined) updateData.eraPreferences = eraPreferences;
     if (schedule !== undefined) {
-      updateData.schedule = schedule;
-      if (schedule) {
-        updateData.nextUpdateAt = calculateNextUpdate(schedule);
+      try {
+        updateData.schedule = normalizeSchedule(schedule, dbPlaylist.nextUpdateAt ?? dbPlaylist.lastUpdatedAt ?? dbPlaylist.createdAt);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid schedule' });
+        return;
+      }
+      if (updateData.schedule) {
+        updateData.nextUpdateAt = calculateNextUpdate(updateData.schedule);
         updateData.status = 'active';
         updateData.failureCount = 0;
         updateData.lastError = null;

@@ -9,7 +9,8 @@ import {
   fetchPlaylists,
 } from '../lib/api';
 import { MinusIcon } from './Icons';
-import { TRACK_OPTIONS, SCHEDULE_OPTIONS } from '../lib/constants';
+import { TRACK_OPTIONS } from '../lib/constants';
+import { RefreshSchedule } from './RefreshSchedule';
 import { useFollowedArtists } from '../hooks/useFollowedArtists';
 import { useArtistWeights } from '../hooks/useArtistWeights';
 import {
@@ -193,25 +194,7 @@ export function CreatePlaylist({ onCreated, onBack }: CreatePlaylistProps) {
           </div>
         </div>
 
-        {/* Auto-refresh schedule */}
-        <div>
-          <label className="text-sm text-[#B3B3B3] mb-2 block">Auto-refresh schedule</label>
-          <div className="flex gap-2">
-            {SCHEDULE_OPTIONS.map((opt) => (
-              <button
-                key={opt.label}
-                onClick={() => setSchedule(opt.value)}
-                className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${
-                  schedule === opt.value
-                    ? 'bg-[#1DB954] text-black'
-                    : 'bg-[#282828] text-[#B3B3B3] hover:bg-[#333333]'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <RefreshSchedule schedule={schedule} onChange={setSchedule} />
 
         {/* Selected artists with weights and era */}
         {selectedArtists.size > 0 && (
