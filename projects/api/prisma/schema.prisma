@@ -37,7 +37,7 @@ model Playlist {
   eraPreferences    Json?     @map("era_preferences")             // { "artistId": 0-100 } per-artist era
 
   // Schedule fields (null schedule = no auto-update)
-  schedule          String?                // 'daily', 'weekly:0' (sun) .. 'weekly:6' (sat)
+  schedule          String?                // 'days:0,2,4' (0=Sun..6=Sat); legacy daily/weekly/weekly:N accepted
   nextUpdateAt      DateTime?  @map("next_update_at")
   lastUpdatedAt     DateTime?  @map("last_updated_at")
   status            String     @default("active")  // active, paused, failed, auth_expired

@@ -9,7 +9,9 @@ import {
   renamePlaylist,
 } from '../lib/api';
 import { MusicIcon, MinusIcon, RefreshIcon, CheckIcon, CloseIcon, PencilIcon } from './Icons';
-import { TRACK_OPTIONS, SCHEDULE_OPTIONS } from '../lib/constants';
+import { TRACK_OPTIONS } from '../lib/constants';
+import { formatRefreshSchedule } from '@brewtify/shared';
+import { RefreshSchedule } from './RefreshSchedule';
 import { useFollowedArtists } from '../hooks/useFollowedArtists';
 import { useArtistWeights } from '../hooks/useArtistWeights';
 import {
@@ -410,30 +412,17 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
               </div>
 
               {/* Schedule */}
-              <div>
-                <label className="text-xs text-[#B3B3B3] mb-1.5 block">Auto-refresh schedule</label>
-                {editMode ? (
-                  <div className="flex gap-2">
-                    {SCHEDULE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => { setSettings({ ...settings, schedule: opt.value }); setDirty(true); }}
-                        className={`flex-1 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                          settings.schedule === opt.value
-                            ? 'bg-[#1DB954] text-black'
-                            : 'bg-[#282828] text-[#B3B3B3] hover:bg-[#333333]'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-white text-sm">
-                    {settings.schedule === 'daily' ? 'Daily' : settings.schedule === 'weekly' ? 'Weekly' : 'Off'}
-                  </span>
-                )}
-              </div>
+              {editMode ? (
+                <RefreshSchedule
+                  schedule={settings.schedule}
+                  onChange={(schedule) => { setSettings({ ...settings, schedule }); setDirty(true); }}
+                />
+              ) : (
+                <div>
+                  <span className="text-xs text-[#B3B3B3] mb-1.5 block">Auto-refresh days</span>
+                  <span className="text-white text-sm">{formatRefreshSchedule(settings.schedule)}</span>
+                </div>
+              )}
 
               {/* Track count */}
               <div>

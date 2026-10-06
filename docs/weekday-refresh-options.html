@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brewtify · Refresh days — four UI options</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: #fff; background: #101210; --green: #1ed760; --muted: #b3b3b3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1500px; margin: auto; padding: 48px 28px; }
+    .eyebrow { color: var(--green); font-size: 11px; letter-spacing: .17em; font-weight: 700; text-transform: uppercase; }
+    h1 { font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; margin: 12px 0; }
+    .intro { color: var(--muted); max-width: 640px; line-height: 1.6; margin: 0 0 30px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+    article { min-width: 0; }
+    .option-heading { display: flex; align-items: center; gap: 8px; min-height: 42px; margin-bottom: 12px; }
+    .number { border: 1px solid #414941; border-radius: 50%; width: 25px; height: 25px; display: grid; place-items: center; font-size: 12px; color: #b7c5b7; flex: none; }
+    h2 { margin: 0; font-size: 14px; letter-spacing: -.02em; }
+    .recommended { font-size: 9px; color: #93ebb2; background: #193322; padding: 5px 7px; border-radius: 6px; }
+    .phone { padding: 20px 16px 16px; background: #121212; border: 1px solid #333b33; border-radius: 25px; box-shadow: 0 14px 34px #0003; }
+    .nav { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #b3b3b3; margin-bottom: 22px; }
+    .cover { width: 58px; height: 58px; border-radius: 9px; display: grid; place-items: center; font-size: 26px; color: #b7ffd0; background: radial-gradient(circle at 80% 15%, #528b58, transparent 55%), linear-gradient(145deg, #314c39, #14211a); }
+    .playlist { display: flex; gap: 12px; align-items: center; margin-bottom: 22px; }
+    .playlist h3 { margin: 3px 0 4px; font-size: 19px; letter-spacing: -.03em; }
+    .playlist p { margin: 0; font-size: 11px; color: var(--muted); }
+    .panel { background: #181818; border-radius: 12px; padding: 14px 12px; }
+    .panel-head { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; font-weight: 600; }
+    .edit { color: var(--green); font-size: 11px; font-weight: 400; }
+    .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-bottom: 9px; }
+    .label { color: var(--muted); font-size: 12px; }
+    button { font: inherit; cursor: pointer; border: 0; color: var(--muted); background: #282828; transition: background .15s, color .15s; }
+    button:hover { background: #363636; }
+    button:focus-visible { outline: 2px solid #a3f2bd; outline-offset: 3px; }
+    button[aria-pressed="true"] { background: var(--green); color: #061d0e; }
+    .days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .day { border-radius: 50%; width: 100%; aspect-ratio: 1; min-height: 32px; padding: 0; font-size: 12px; font-weight: 650; }
+    .days[data-disabled="true"] { opacity: .35; }
+    .day:disabled { cursor: default; }
+    .none { border-radius: 20px; padding: 7px 11px; font-size: 11px; }
+    .toggle { width: 42px; height: 25px; padding: 3px; border-radius: 20px; flex: none; background: #454545; }
+    .toggle i { display: block; background: #fff; height: 19px; width: 19px; border-radius: 50%; transition: transform .15s; }
+    .toggle[aria-checked="true"] { background: var(--green); }
+    .toggle[aria-checked="true"] i { transform: translateX(17px); background: #092713; }
+    .mode { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: #282828; border-radius: 9px; margin-bottom: 13px; }
+    .mode button { padding: 8px 4px; border-radius: 7px; font-size: 11px; }
+    .mode button[aria-pressed="true"] { background: #414141; color: #fff; }
+    .hint { margin: 10px 0 0; font-size: 10px; line-height: 1.6; color: var(--muted); min-height: 32px; }
+    .summary { margin: 14px 0 0; font-size: 11px; line-height: 1.55; min-height: 38px; color: #93ebb2; }
+    .status { color: var(--muted); font-size: 10px; min-height: 18px; margin: 4px 0 0; }
+    .divider { height: 1px; background: #2a2a2a; margin: 18px 0; }
+    .tracks { display: flex; gap: 5px; margin-top: 9px; }
+    .tracks span { background: #282828; color: var(--muted); border-radius: 20px; text-align: center; padding: 7px 0; flex: 1; font-size: 11px; }
+    .tracks .active { background: var(--green); color: #061d0e; }
+    .save { width: 100%; border-radius: 20px; background: var(--green); color: #061d0e; font-size: 12px; font-weight: 700; padding: 12px; margin-top: 18px; }
+    .save:hover { background: #4ae17e; }
+    .description { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 15px 5px 0; }
+    .description strong { color: white; font-weight: 550; }
+    .note { margin-top: 32px; border-top: 1px solid #2b352b; padding-top: 18px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+    @media (max-width: 1150px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; } .phone { max-width: 390px; } }
+    @media (max-width: 620px) { main { padding: 30px 18px; } .grid { grid-template-columns: 1fr; } .phone { max-width: none; } .day { max-height: 46px; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Brewtify / Design preview</div>
+  <h1>A fresh mix, on your days.</h1>
+  <p class="intro">Four ways to choose refresh days in playlist settings. Try the day buttons and the “None” controls in each option. Every preview works independently.</p>
+  <div class="grid">
+    <article data-option="1">
+      <div class="option-heading"><span class="number">1</span><h2>None + day circles</h2><span class="recommended">Recommended</span></div>
+      <div class="phone">
+        <div class="nav"><span>← Library</span><span>•••</span></div>
+        <div class="playlist"><div class="cover" aria-hidden="true">♫</div><div><h3>My weekly brew</h3><p>100 tracks · Brewtify playlist</p></div></div>
+        <div class="panel">
+          <div class="panel-head"><span>Settings</span><span class="edit">Editing</span></div>
+          <div class="label-row"><span class="label">Auto-refresh days</span><button class="none" data-action="none" aria-pressed="false">None</button></div>
+          <div class="days" role="group" aria-label="Refresh days"></div>
+          <p class="hint">Choose days, or select None to turn off.</p>
+          <p class="summary" aria-live="polite"></p><p class="status" aria-live="polite"></p>
+          <div class="divider"></div><span class="label">Tracks</span><div class="tracks"><span>60</span><span>80</span><span class="active">100</span><span>120</span><span>140</span></div>
+        </div>
+        <button class="save" data-action="save">Save settings</button>
+      </div>
+      <p class="description"><strong>The most direct option.</strong> None clears all days. Tap any day to enable refresh again. Deselecting the last day also selects None.</p>
+    </article>
+    <article data-option="2">
+      <div class="option-heading"><span class="number">2</span><h2>Enable switch + days</h2></div>
+      <div class="phone">
+        <div class="nav"><span>← Library</span><span>•••</span></div>
+        <div class="playlist"><div class="cover" aria-hidden="true">♫</div><div><h3>My weekly brew</h3><p>100 tracks · Brewtify playlist</p></div></div>
+        <div class="panel">
+          <div class="panel-head"><span>Settings</span><span class="edit">Editing</span></div>
+          <div class="label-row"><span class="label">Auto-refresh</span><button class="toggle" role="switch" aria-label="Enable auto-refresh" aria-checked="true" data-action="toggle"><i></i></button></div>
+          <div class="days" role="group" aria-label="Refresh days"></div>
+          <p class="hint">Turn off to pause all automatic refreshes.</p>
+          <p class="summary" aria-live="polite"></p><p class="status" aria-live="polite"></p>
+          <div class="divider"></div><span class="label">Tracks</span><div class="tracks"><span>60</span><span>80</span><span class="active">100</span><span>120</span><span>140</span></div>
+        </div>
+        <button class="save" data-action="save">Save settings</button>
+      </div>
+      <p class="description"><strong>An explicit on/off control.</strong> Off means None and dims the days. Switching back on restores the selection within the editor. The last selected day cannot be removed; use the switch to turn off.</p>
+    </article>
+    <article data-option="3">
+      <div class="option-heading"><span class="number">3</span><h2>None / Choose days</h2></div>
+      <div class="phone">
+        <div class="nav"><span>← Library</span><span>•••</span></div>
+        <div class="playlist"><div class="cover" aria-hidden="true">♫</div><div><h3>My weekly brew</h3><p>100 tracks · Brewtify playlist</p></div></div>
+        <div class="panel">
+          <div class="panel-head"><span>Settings</span><span class="edit">Editing</span></div>
+          <div class="label-row"><span class="label">Auto-refresh schedule</span></div>
+          <div class="mode" role="group" aria-label="Auto-refresh mode"><button data-action="none" aria-pressed="false">None</button><button data-action="enable" aria-pressed="true">Choose days</button></div>
+          <div class="days" role="group" aria-label="Refresh days"></div>
+          <p class="hint">Choose the days your playlist gets a fresh mix.</p>
+          <p class="summary" aria-live="polite"></p><p class="status" aria-live="polite"></p>
+          <div class="divider"></div><span class="label">Tracks</span><div class="tracks"><span>60</span><span>80</span><span class="active">100</span><span>120</span><span>140</span></div>
+        </div>
+        <button class="save" data-action="save">Save settings</button>
+      </div>
+      <p class="description"><strong>A clear two-step choice.</strong> Select None or Choose days. Days stay visible but disabled in None mode. Removing the last day returns to None.</p>
+    </article>
+    <article data-option="4">
+      <div class="option-heading"><span class="number">4</span><h2>Days + clear selection</h2></div>
+      <div class="phone">
+        <div class="nav"><span>← Library</span><span>•••</span></div>
+        <div class="playlist"><div class="cover" aria-hidden="true">♫</div><div><h3>My weekly brew</h3><p>100 tracks · Brewtify playlist</p></div></div>
+        <div class="panel">
+          <div class="panel-head"><span>Settings</span><span class="edit">Editing</span></div>
+          <div class="label-row"><span class="label">Auto-refresh days</span><button class="none" data-action="none">Clear</button></div>
+          <div class="days" role="group" aria-label="Refresh days"></div>
+          <p class="hint">No days selected = None (manual refresh only).</p>
+          <p class="summary" aria-live="polite"></p><p class="status" aria-live="polite"></p>
+          <div class="divider"></div><span class="label">Tracks</span><div class="tracks"><span>60</span><span>80</span><span class="active">100</span><span>120</span><span>140</span></div>
+        </div>
+        <button class="save" data-action="save">Save settings</button>
+      </div>
+      <p class="description"><strong>The lightest control.</strong> An empty row is None. Clear removes all days at once; selecting any day turns refresh on.</p>
+    </article>
+  </div>
+  <p class="note">Interactive design preview only · No playlist changes are saved. Days run Sunday → Saturday. Refresh timing follows the current service schedule: 00:00 UTC on selected days. Hover or focus each letter for its full day name.</p>
+</main>
+<script>
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const shortNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  document.querySelectorAll('article').forEach(card => {
+    const option = Number(card.dataset.option);
+    let selected = new Set([0, 2, 4]);
+    let remembered = new Set(selected);
+    let enabled = true;
+    const row = card.querySelector('.days');
+    names.forEach((name, index) => {
+      const button = document.createElement('button');
+      button.className = 'day';
+      button.textContent = name[0];
+      button.title = name;
+      button.setAttribute('aria-label', name);
+      button.dataset.day = index;
+      row.append(button);
+    });
+    function render() {
+      row.dataset.disabled = String(!enabled && (option === 2 || option === 3));
+      row.querySelectorAll('button').forEach((button, index) => {
+        button.setAttribute('aria-pressed', String(selected.has(index) && (enabled || option === 2)));
+        button.disabled = !enabled && (option === 2 || option === 3);
+      });
+      const none = card.querySelector('[data-action="none"]');
+      if (none && option !== 4) none.setAttribute('aria-pressed', String(!enabled));
+      card.querySelector('[data-action="enable"]')?.setAttribute('aria-pressed', String(enabled));
+      card.querySelector('[data-action="toggle"]')?.setAttribute('aria-checked', String(enabled));
+      const list = [...selected].sort().map(day => shortNames[day]).join(', ');
+      card.querySelector('.summary').textContent = !enabled ? 'None · Manual refresh only' : selected.size === 7 ? 'Every day · 00:00 UTC' : `${list} · 00:00 UTC`;
+    }
+    card.addEventListener('click', event => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      card.querySelector('.status').textContent = '';
+      if (button.dataset.day !== undefined) {
+        const day = Number(button.dataset.day);
+        if (selected.has(day)) {
+          if (option === 2 && selected.size === 1) {
+            card.querySelector('.status').textContent = 'Use the switch to turn auto-refresh off.';
+            return;
+          }
+          selected.delete(day);
+        } else selected.add(day);
+        enabled = selected.size > 0;
+        if (enabled) remembered = new Set(selected);
+      } else if (button.dataset.action === 'none') {
+        if (selected.size) remembered = new Set(selected);
+        enabled = false;
+        selected.clear();
+      } else if (button.dataset.action === 'toggle') {
+        enabled = !enabled;
+      } else if (button.dataset.action === 'enable') {
+        enabled = true;
+        if (!selected.size) selected = new Set(remembered);
+      } else if (button.dataset.action === 'save') {
+        card.querySelector('.status').textContent = 'Preview saved · no real playlist changes.';
+      }
+      render();
+    });
+    render();
+  });
+</script>
+</body>
+</html>

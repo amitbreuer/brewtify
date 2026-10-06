@@ -6,7 +6,8 @@ import { spotifyService } from './services/spotify';
 import { getAccessTokenForUser } from './routes/auth';
 import { pendingAuthStore } from './services/pending-auth-store';
 import { prisma } from './services/db';
-import { calculateNextUpdate } from './services/scheduler';
+import { calculateNextUpdate, normalizePlaylistSchedule } from './services/scheduler';
+import { normalizeSchedule, formatRefreshSchedule } from '@brewtify/shared';
 import { createLogger } from './utils/logger';
 import { getTap } from '@brewtify/tap';
 
@@ -134,7 +135,7 @@ export function createBot() {
     }
   });
 
-  // /schedule <playlist_name> <daily|weekly:N>
+  // /schedule <playlist_name> <days:0,2,4|daily|weekly:N>
   // Example: /schedule "My Mix" daily
   // Example: /schedule "Chill Vibes" weekly:5
   bot.command('schedule', async (ctx) => {
@@ -146,10 +147,10 @@ export function createBot() {
 
     if (!args) {
       await ctx.reply(
-        '📅 Usage: /schedule <playlist_name> <daily|weekly:N>\n\n' +
+        '📅 Usage: /schedule <playlist_name> <days:0,2,4|daily|weekly:N>\n\n' +
         'Examples:\n' +
         '• /schedule My Mix daily\n' +
-        '• /schedule Chill Vibes weekly:5 (Friday)\n\n' +
+        '• /schedule Chill Vibes days:0,2,4 (Sunday, Tuesday, Thursday)\n\n' +
         'Days: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat'
       );
       return;
@@ -160,8 +161,16 @@ export function createBot() {
     const scheduleStr = parts[parts.length - 1];
     const playlistName = parts.slice(0, -1).join(' ');
 
-    if (!playlistName || (!scheduleStr.match(/^daily$/) && !scheduleStr.match(/^weekly:[0-6]$/))) {
-      await ctx.reply('❌ Invalid format. Use: /schedule <playlist_name> <daily|weekly:N>');
+    if (!playlistName) {
+      await ctx.reply('❌ Invalid format. Use: /schedule <playlist_name> <days:0,2,4|daily|weekly:N>');
+      return;
+    }
+
+    let normalizedSchedule: string;
+    try {
+      normalizedSchedule = normalizeSchedule(scheduleStr)!;
+    } catch {
+      await ctx.reply('❌ Invalid schedule. Use days:0,2,4, daily, or weekly:N (0=Sun..6=Sat).');
       return;
     }
 
@@ -183,11 +192,11 @@ export function createBot() {
     }
 
     // Update schedule
-    const nextUpdate = calculateNextUpdate(scheduleStr);
+    const nextUpdate = calculateNextUpdate(normalizedSchedule);
     await prisma.playlist.update({
       where: { id: playlist.id },
       data: {
-        schedule: scheduleStr,
+        schedule: normalizedSchedule,
         nextUpdateAt: nextUpdate,
         status: 'active',
         failureCount: 0,
@@ -195,10 +204,7 @@ export function createBot() {
       },
     });
 
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const scheduleLabel = scheduleStr === 'daily'
-      ? 'Daily at 00:00 UTC'
-      : `Weekly on ${dayNames[parseInt(scheduleStr.split(':')[1])]} at 00:00 UTC`;
+    const scheduleLabel = formatRefreshSchedule(normalizedSchedule);
 
     await ctx.reply(`✅ Scheduled "${playlist.name}" — ${scheduleLabel}\n📅 Next update: ${nextUpdate.toISOString().split('T')[0]}`);
     getTap().notify({
@@ -206,7 +212,7 @@ export function createBot() {
       userId: telegramUserId,
       username: ctx.from?.username,
       message: `Scheduled "${playlist.name}" — ${scheduleLabel}`,
-      meta: { playlistName: playlist.name, schedule: scheduleStr },
+      meta: { playlistName: playlist.name, schedule: normalizedSchedule },
     });
   });
 
@@ -264,10 +270,15 @@ export function createBot() {
       return;
     }
 
-    const nextUpdate = calculateNextUpdate(playlist.schedule!);
+    const schedule = normalizePlaylistSchedule(playlist);
+    if (!schedule) {
+      await ctx.reply('This playlist has no auto-refresh days. Set a schedule first.');
+      return;
+    }
+    const nextUpdate = calculateNextUpdate(schedule);
     await prisma.playlist.update({
       where: { id: playlist.id },
-      data: { status: 'active', nextUpdateAt: nextUpdate, failureCount: 0, lastError: null },
+      data: { schedule, status: 'active', nextUpdateAt: nextUpdate, failureCount: 0, lastError: null },
     });
 
     await ctx.reply(`▶️ Resumed "${playlist.name}" — next update: ${nextUpdate.toISOString().split('T')[0]}`);
@@ -298,7 +309,7 @@ export function createBot() {
     const lines = playlists.map((p) => {
       const icon = statusIcons[p.status] || '⚪';
       const next = p.nextUpdateAt ? p.nextUpdateAt.toISOString().split('T')[0] : 'N/A';
-      const sched = p.schedule === 'daily' ? 'Daily' : `Weekly`;
+      const sched = formatRefreshSchedule(normalizePlaylistSchedule(p));
       return `${icon} ${p.name || p.spotifyPlaylistId} — ${sched} (next: ${next})`;
     });
 
