@@ -1,4 +1,4 @@
-name: Party checks
+name: Checks
 on:
   pull_request:
   workflow_dispatch:
@@ -15,5 +15,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm test --workspace=@brewtify/spotify && npm test --workspace=api && npm run test:integration --workspace=api
-      - run: npm run lint:party --workspace=mini-app && npm test --workspace=mini-app
+      - run: npm test --workspace=@brewtify/shared && npm test --workspace=api && npm test --workspace=mini-app

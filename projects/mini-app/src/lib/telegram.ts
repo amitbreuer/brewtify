@@ -1,10 +1,8 @@
 import { useEffect } from 'react';
 
 interface TelegramWebApp {
-  initData: string;
   ready?: () => void;
   expand?: () => void;
-  openLink?: (url: string) => void;
   BackButton?: {
     show: () => void;
     hide: () => void;

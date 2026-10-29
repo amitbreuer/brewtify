@@ -5,12 +5,11 @@ type Tab = 'playlists' | 'artists';
 interface BottomTabsProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
-  inline?: boolean;
 }
 
-export function BottomTabs({ activeTab, onTabChange, inline = false }: BottomTabsProps) {
+export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
   return (
-    <nav aria-label="Library" className={`${inline ? '' : 'fixed bottom-0 left-0 right-0 z-20'} bg-[#181818] border-t border-[#282828]`}>
+    <nav aria-label="Library" className="fixed bottom-0 left-0 right-0 bg-[#181818] border-t border-[#282828] z-20">
       <div className="flex">
         <button
           onClick={() => onTabChange('playlists')}
