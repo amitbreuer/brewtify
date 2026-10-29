@@ -186,6 +186,16 @@ attempts/memberships in batches of 100, and expired sessions/auth flows/throttle
 credentials in batches of 500. Every operational path enforces expiry immediately;
 physical deletion normally follows on the next minute tick, longer under backlog
 or outage. Monitor oldest expired row/outbox age and alert when above five minutes.
+
+The per-minute tick only queries Postgres while Party may hold rows: any
+`/api/party/*` route past `/config` sets the Upstash key
+`party:maintenance:active` for 13 hours (longer than the 12-hour room TTL), and
+idle ticks return `{"skipped": true}` without touching the database. A full
+sweep still runs at least once a day (`party:maintenance:swept`), and a missing
+or failing Redis always runs maintenance. Without this gate the minute tick keeps
+Neon's compute awake around the clock (it only scales to zero after five idle
+minutes), which exhausted the Free plan's 100 CU-hour monthly quota in October 2026
+and took down the Library and its daily refresh.
 Set a short operational log retention (recommended seven days), check every
 proxy/log sink for full URLs, and document the actual Neon/managed backup/PITR
 retention in the deployment runbook. Physical deletion does **not** synchronously

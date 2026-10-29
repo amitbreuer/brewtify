@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import { SpotifyError } from '@brewtify/spotify';
 import { createLogger } from '../utils/logger';
+import { partyActivity } from './activity';
 import { CatalogError } from './catalog';
 import {
   authorizationStatus,
@@ -167,6 +168,11 @@ partyRoutes.use((_req, _res, next) => {
   checkPrerequisites();
   next();
 });
+// Every route below may write Party rows that per-minute maintenance must clean up.
+partyRoutes.use(async (_req, _res, next) => {
+  await partyActivity().mark();
+  next();
+});
 partyRoutes.use(express.json({ limit: '32kb' }));
 partyRoutes.get('/auth/launch', launchAuthorization);
 partyRoutes.get('/auth/callback', finishAuthorization);
@@ -297,8 +303,14 @@ internalPartyRoutes.post('/jobs', async (req, res) => {
   res.status(204).end();
 });
 internalPartyRoutes.post('/maintenance', async (_req, res) => {
+  const activity = partyActivity();
+  if (!(await activity.maintenanceDue())) {
+    res.json({ deleted: 0, dispatched: 0, skipped: true });
+    return;
+  }
   const deleted = await cleanup();
   const dispatched = partyEnabled() ? await dispatchOutbox() : 0;
+  await activity.recordMaintenance();
   res.json({ deleted, dispatched });
 });
 internalPartyRoutes.use(partyErrorHandler);
