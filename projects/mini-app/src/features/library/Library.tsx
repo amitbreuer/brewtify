@@ -14,7 +14,7 @@ import { useTelegramBack } from '../../lib/telegram';
 
 type Tab = 'playlists' | 'artists';
 
-export default function Library({ partyEnabled = false }: { partyEnabled?: boolean }) {
+export default function Library() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState<'loading' | 'login' | 'home' | 'create' | 'detail' | 'error'>('loading');
   const [activeTab, setActiveTab] = useState<Tab>('playlists');
@@ -91,10 +91,7 @@ export default function Library({ partyEnabled = false }: { partyEnabled?: boole
   return (
     <div className="min-h-screen bg-[#121212] text-white pb-16">
       <header className="sticky top-0 bg-[#121212] border-b border-[#282828] z-10">
-        <Profile profile={profile} onLogout={handleLogout} libraryLabel={partyEnabled} />
-        {partyEnabled && (
-          <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} inline />
-        )}
+        <Profile profile={profile} onLogout={handleLogout} />
       </header>
 
       <div className={activeTab === 'playlists' ? '' : 'hidden'}>
@@ -115,7 +112,7 @@ export default function Library({ partyEnabled = false }: { partyEnabled?: boole
         <ArtistsPage />
       </div>
 
-      {!partyEnabled && <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} />}
+      <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 }

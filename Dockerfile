@@ -10,19 +10,16 @@ COPY projects/api/prisma ./projects/api/prisma/
 COPY projects/api/prisma.config.ts ./projects/api/prisma.config.ts
 COPY projects/shared/package.json projects/shared/tsconfig.json ./projects/shared/
 COPY projects/shared/src ./projects/shared/src/
-COPY projects/spotify/package.json projects/spotify/tsconfig.json ./projects/spotify/
-COPY projects/spotify/src ./projects/spotify/src/
 COPY projects/tap/package.json projects/tap/tsconfig.json ./projects/tap/
 COPY projects/tap/src ./projects/tap/src/
 COPY projects/mini-app/package.json projects/mini-app/tsconfig.json projects/mini-app/tsconfig.app.json projects/mini-app/tsconfig.node.json ./projects/mini-app/
 COPY projects/mini-app/index.html projects/mini-app/vite.config.ts ./projects/mini-app/
 COPY projects/mini-app/src ./projects/mini-app/src/
 COPY projects/mini-app/public ./projects/mini-app/public/
-COPY projects/mini-app/dev ./projects/mini-app/dev/
 
 # Install all dependencies (including devDependencies for build)
 # npm can silently skip failed optional downloads; verify native build tools early.
-RUN if npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/spotify --workspace=projects/tap --workspace=projects/mini-app --include-workspace-root --include=dev --include=optional --loglevel=verbose > /tmp/npm-ci.log 2>&1 \
+RUN if npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/tap --workspace=projects/mini-app --include-workspace-root --include=dev --include=optional --loglevel=verbose > /tmp/npm-ci.log 2>&1 \
     && node --input-type=module -e "await import('rolldown'); await import('@tailwindcss/oxide'); await import('lightningcss'); await import('rollup');"; then \
       rm /tmp/npm-ci.log; \
     else \
@@ -32,9 +29,6 @@ RUN if npm ci --workspace=projects/api --workspace=projects/shared --workspace=p
 
 # Build shared package
 WORKDIR /app/projects/shared
-RUN npx tsc
-
-WORKDIR /app/projects/spotify
 RUN npx tsc
 
 # Build tap package
@@ -62,14 +56,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY projects/api/package.json ./projects/api/
 COPY projects/shared/package.json ./projects/shared/
-COPY projects/spotify/package.json ./projects/spotify/
 COPY projects/tap/package.json ./projects/tap/
 COPY --from=builder /app/projects/shared/dist ./projects/shared/dist/
-COPY --from=builder /app/projects/spotify/dist ./projects/spotify/dist/
 COPY --from=builder /app/projects/tap/dist ./projects/tap/dist/
 
 # Install production dependencies only
-RUN npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/spotify --workspace=projects/tap --include-workspace-root --omit=dev
+RUN npm ci --workspace=projects/api --workspace=projects/shared --workspace=projects/tap --include-workspace-root --omit=dev
 
 # Copy built output (includes generated Prisma client in dist/generated/)
 COPY --from=builder /app/projects/api/dist ./projects/api/dist/
